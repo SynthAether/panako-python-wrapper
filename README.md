@@ -663,13 +663,7 @@ chmod +x gradlew
 
 ## Performance Tips
 
-### Processing Speed
-
-- **Expected speed:** ~100-200x real-time (4-minute song processes in ~2 seconds)
-- **Database queries:** Typically < 100ms per query
-- **Storage:** ~5-10KB per minute of audio
-
-### Optimizing Large Databases
+### Large Databases
 
 For databases with 10,000+ files:
 - Use SSD storage for the database directory (`~/.panako/dbs`)
