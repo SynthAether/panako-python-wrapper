@@ -41,8 +41,20 @@ The original Panako requires complex Java commands with multiple flags. This wra
 # Install Java 17
 brew install openjdk@17
 
-# Set JAVA_HOME (add to ~/.zshrc or ~/.bash_profile)
-export JAVA_HOME="/opt/homebrew/Cellar/openjdk@17/17.0.17/libexec/openjdk.jdk/Contents/Home"
+# Add Java to PATH (add to ~/.zshrc or ~/.bash_profile)
+# For Apple Silicon (M1/M2/M3):
+export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+
+# For Intel Macs:
+# export PATH="/usr/local/opt/openjdk@17/bin:$PATH"
+# export JAVA_HOME="/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+
+# Create symlink for system Java wrappers to find this JDK (optional)
+# Apple Silicon:
+sudo ln -sfn /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk
+# Intel:
+# sudo ln -sfn /usr/local/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk
 
 # Install LMDB
 brew install lmdb
@@ -51,11 +63,33 @@ brew install lmdb
 brew install ffmpeg
 ```
 
+**Important:** Add the `export` lines above to your shell profile to make them persistent:
+```bash
+# For zsh (default on modern macOS):
+echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
+echo 'export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash:
+# echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.bash_profile
+# echo 'export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"' >> ~/.bash_profile
+# source ~/.bash_profile
+```
+
+**Verify Java installation:**
+```bash
+java -version
+# Should show: openjdk version "17.x.x"
+```
+
 #### 3. Install Panako
 ```bash
 # Clone Panako repository
 git clone https://github.com/JorenSix/Panako.git
 cd Panako
+
+# Make Gradle wrapper executable (may be needed after cloning)
+chmod +x gradlew
 
 # Build Panako
 ./gradlew shadowJar
@@ -64,7 +98,20 @@ cd Panako
 ls build/libs/panako-*-all.jar
 ```
 
-#### 4. Install This Wrapper
+> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+
+> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes.
+
+#### 4. Set Panako Path (Important!)
+
+The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
+```bash
+# Add to ~/.zshrc (or ~/.bash_profile for bash)
+echo 'export PANAKO_DIR="/path/to/your/Panako"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+#### 5. Install This Wrapper
 ```bash
 # Clone this repository
 git clone https://github.com/SynthAether/panako-python-wrapper.git
@@ -74,12 +121,47 @@ cd panako-python-wrapper
 chmod +x panako.py
 ```
 
+> **Note:** You can run the wrapper directly with `python3 panako.py ...` without any PATH configuration. The PATH addition below is optional for convenience.
+
+**Optional:** To run `panako.py` from anywhere, add it to your PATH:
+```bash
+# Add to ~/.zshrc (or ~/.bash_profile for bash)
+echo 'export PATH="$PATH:/path/to/panako-python-wrapper"' >> ~/.zshrc
+source ~/.zshrc
+
+# Now you can run from anywhere:
+panako.py stats
+```
+
+#### 6. Verify Installation
+Run these commands to verify everything is set up correctly:
+```bash
+# Check Java is available
+java -version
+
+# Check the Panako JAR was built
+ls "$PANAKO_DIR"/build/libs/panako-*-all.jar
+# Or if using default location:
+ls ~/Panako/build/libs/panako-*-all.jar
+
+# Test the wrapper
+python3 panako.py --help
+
+# Check database status
+python3 panako.py stats
+```
+
+> **Note:** The wrapper automatically configures library paths for LMDB and Java on macOS (via `DYLD_LIBRARY_PATH`), so you typically don't need to set these manually.
+
 ### Ubuntu/Debian Installation
 
 #### 1. Install Dependencies
 ```bash
 # Update package list
 sudo apt update
+
+# Install Python 3 (if not already installed)
+sudo apt install python3 python3-venv
 
 # Install Java 17
 sudo apt install openjdk-17-jdk
@@ -91,14 +173,27 @@ sudo apt install liblmdb-dev
 sudo apt install ffmpeg
 
 # Install build tools
-sudo apt install git gradle
+sudo apt install git
 ```
+
+> **Note:** The wrapper uses only Python standard library modules, so no additional Python packages or virtual environment are required. If you prefer to use a virtualenv for isolation, you can create one with `python3 -m venv .venv && source .venv/bin/activate`, but it's entirely optional.
 
 #### 2. Set JAVA_HOME
 ```bash
 # Add to ~/.bashrc
+# For AMD64/x86_64 systems:
 echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
+
+# For ARM64/aarch64 systems (e.g., Raspberry Pi, AWS Graviton):
+# echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64' >> ~/.bashrc
+
 source ~/.bashrc
+```
+
+**Verify Java installation:**
+```bash
+java -version
+# Should show: openjdk version "17.x.x"
 ```
 
 #### 3. Install Panako
@@ -107,6 +202,9 @@ source ~/.bashrc
 git clone https://github.com/JorenSix/Panako.git
 cd Panako
 
+# Make Gradle wrapper executable (may be needed after cloning)
+chmod +x gradlew
+
 # Build Panako
 ./gradlew shadowJar
 
@@ -114,26 +212,77 @@ cd Panako
 ls build/libs/panako-*-all.jar
 ```
 
-#### 4. Install This Wrapper
+> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+
+> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes.
+
+#### 4. Set Panako Path (Important!)
+
+The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
+```bash
+# Add to ~/.bashrc
+echo 'export PANAKO_DIR="/path/to/your/Panako"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### 5. Install This Wrapper
 ```bash
 # Clone this repository
-git clone https://github.com/YOUR_USERNAME/panako-python-wrapper.git
+git clone https://github.com/SynthAether/panako-python-wrapper.git
 cd panako-python-wrapper
 
 # Make panako.py executable
 chmod +x panako.py
 ```
 
-## Configuration
+> **Note:** You can run the wrapper directly with `python3 panako.py ...` without any PATH configuration. The PATH addition below is optional for convenience.
 
-### Update Panako Path
+**Optional:** To run `panako.py` from anywhere, add it to your PATH:
+```bash
+# Add to ~/.bashrc
+echo 'export PATH="$PATH:/path/to/panako-python-wrapper"' >> ~/.bashrc
+source ~/.bashrc
 
-Edit `panako.py` and update the default Panako directory:
-```python
-def __init__(self, panako_dir="/path/to/your/Panako"):
+# Now you can run from anywhere:
+panako.py stats
 ```
 
-Or specify it when creating the instance:
+#### 6. Verify Installation
+Run these commands to verify everything is set up correctly:
+```bash
+# Check Java is available
+java -version
+
+# Check the Panako JAR was built
+ls "$PANAKO_DIR"/build/libs/panako-*-all.jar
+# Or if using default location:
+ls ~/Panako/build/libs/panako-*-all.jar
+
+# Test the wrapper
+python3 panako.py --help
+
+# Check database status
+python3 panako.py stats
+```
+
+> **Note:** The wrapper automatically configures library paths for LMDB and Java on Linux (via `LD_LIBRARY_PATH`), so you typically don't need to set these manually.
+
+## Configuration
+
+### Setting the Panako Path
+
+The wrapper looks for Panako in the following order:
+1. Path passed directly to the constructor
+2. `PANAKO_DIR` environment variable
+3. Default: `~/Panako`
+
+**Option 1: Set environment variable (recommended)**
+```bash
+# Add to ~/.zshrc (macOS) or ~/.bashrc (Linux)
+export PANAKO_DIR="/path/to/your/Panako"
+```
+
+**Option 2: Specify when creating the instance**
 ```python
 from panako import Panako
 panako = Panako(panako_dir="/path/to/your/Panako")
@@ -166,7 +315,7 @@ python3 panako.py batch /path/to/queries
 # Show database statistics
 python3 panako.py stats
 
-# List cached files
+# List cached fingerprint files
 python3 panako.py list
 
 # Delete entries
@@ -175,6 +324,9 @@ python3 panako.py delete /path/to/audio.wav
 # Clear entire database (with confirmation)
 python3 panako.py clear
 ```
+
+#### Supported Audio Formats
+The wrapper processes WAV files by default. With ffmpeg installed, Panako can handle additional formats including MP3, FLAC, OGG, M4A, and most other audio formats that ffmpeg supports.
 
 ### Python API
 
@@ -305,13 +457,19 @@ Frequency factor: 1.000 (perfect pitch match)
 
 **Solution:**
 ```bash
-# macOS
+# macOS (Apple Silicon)
 brew install openjdk@17
-export JAVA_HOME="/opt/homebrew/Cellar/openjdk@17/17.0.17/libexec/openjdk.jdk/Contents/Home"
+export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
 
-# Ubuntu
+# macOS (Intel)
+brew install openjdk@17
+export PATH="/usr/local/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+
+# Ubuntu/Debian
 sudo apt install openjdk-17-jdk
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64  # or java-17-openjdk-arm64 for ARM
 ```
 
 ### LMDB Library Not Found
@@ -389,14 +547,10 @@ OLAF_HIT_THRESHOLD = 20
 ## Project Structure
 ```
 panako-python-wrapper/
-├── panako.py              # Main wrapper class
-├── README.md              # This file
-├── LICENSE                # MIT License
-├── requirements.txt       # Python dependencies (none!)
-├── .gitignore            # Git ignore rules
-└── examples/             # Usage examples
-    ├── basic_usage.py
-    └── batch_matching.py
+├── panako.py                    # Main wrapper class and CLI
+├── Panako Python Wrapper.md     # This documentation file
+├── .gitignore                   # Git ignore rules
+└── .gitattributes               # Git attributes
 ```
 
 ## Contributing
@@ -426,6 +580,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/YOUR_USERNAME/panako-python-wrapper/issues)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/SynthAether/panako-python-wrapper/issues)
 - **Panako Documentation**: https://panako.be/
 - **Discussions**: Open a discussion for questions and ideas
