@@ -19,7 +19,7 @@ class Panako:
     # Supported audio formats (when ffmpeg is available)
     AUDIO_EXTENSIONS = ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma']
 
-    def __init__(self, panako_dir=None, skip_validation=False):
+    def __init__(self, panako_dir=None, skip_validation=False, defer_build=False):
         """
         Initialize Panako wrapper
 
@@ -28,6 +28,7 @@ class Panako:
                         If not provided, looks for PANAKO_DIR environment variable
                         or defaults to ~/Panako
             skip_validation: If True, skip dependency validation (for testing)
+            defer_build: If True, don't build Java command (for verify command)
         """
         if panako_dir is None:
             panako_dir = os.environ.get('PANAKO_DIR', os.path.expanduser('~/Panako'))
@@ -49,7 +50,9 @@ class Panako:
             self._validate_dependencies()
 
         # Build Java command base
-        self.java_cmd = self._build_java_command()
+        self.java_cmd = None
+        if not defer_build:
+            self.java_cmd = self._build_java_command()
 
     def _setup_environment(self):
         """Setup required environment variables"""
@@ -209,7 +212,7 @@ Possible solutions:
    ./gradlew shadowJar
 
 2. If Panako is installed elsewhere, set PANAKO_DIR:
-   export PANAKO_DIR="{Path.home()}/path/to/your/Panako"
+   export PANAKO_DIR="{Path.home()}/Panako"
 
 3. Or specify path when creating Panako instance:
    panako = Panako(panako_dir="/path/to/your/Panako")
@@ -255,6 +258,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         Returns:
             subprocess.CompletedProcess or None
         """
+        if self.java_cmd is None:
+            print("Error: Panako not properly initialized", file=sys.stderr)
+            return None
+
         cmd = self.java_cmd + list(args)
 
         try:
