@@ -67,7 +67,7 @@ ls build/libs/panako-*-all.jar
 #### 4. Install This Wrapper
 ```bash
 # Clone this repository
-git clone https://github.com/YOUR_USERNAME/panako-python-wrapper.git
+git clone https://github.com/SynthAether/panako-python-wrapper.git
 cd panako-python-wrapper
 
 # Make panako.py executable
