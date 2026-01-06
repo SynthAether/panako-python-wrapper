@@ -63,11 +63,27 @@ brew install lmdb
 brew install ffmpeg
 ```
 
+**Important:** Add the `export` lines above to your shell profile to make them persistent:
+```bash
+# For zsh (default on modern macOS):
+echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.zshrc
+echo 'export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"' >> ~/.zshrc
+source ~/.zshrc
+
+# For bash:
+# echo 'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"' >> ~/.bash_profile
+# echo 'export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"' >> ~/.bash_profile
+# source ~/.bash_profile
+```
+
 #### 3. Install Panako
 ```bash
 # Clone Panako repository
 git clone https://github.com/JorenSix/Panako.git
 cd Panako
+
+# Make Gradle wrapper executable (may be needed after cloning)
+chmod +x gradlew
 
 # Build Panako
 ./gradlew shadowJar
@@ -76,7 +92,18 @@ cd Panako
 ls build/libs/panako-*-all.jar
 ```
 
-#### 4. Install This Wrapper
+> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+
+#### 4. Set Panako Path (Important!)
+
+The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
+```bash
+# Add to ~/.zshrc (or ~/.bash_profile for bash)
+echo 'export PANAKO_DIR="/path/to/your/Panako"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+#### 5. Install This Wrapper
 ```bash
 # Clone this repository
 git clone https://github.com/SynthAether/panako-python-wrapper.git
@@ -86,12 +113,25 @@ cd panako-python-wrapper
 chmod +x panako.py
 ```
 
+**Optional:** To run `panako.py` from anywhere, add it to your PATH:
+```bash
+# Add to ~/.zshrc (or ~/.bash_profile for bash)
+echo 'export PATH="$PATH:/path/to/panako-python-wrapper"' >> ~/.zshrc
+source ~/.zshrc
+
+# Now you can run from anywhere:
+panako.py stats
+```
+
 ### Ubuntu/Debian Installation
 
 #### 1. Install Dependencies
 ```bash
 # Update package list
 sudo apt update
+
+# Install Python 3 (if not already installed)
+sudo apt install python3 python3-venv
 
 # Install Java 17
 sudo apt install openjdk-17-jdk
@@ -103,7 +143,7 @@ sudo apt install liblmdb-dev
 sudo apt install ffmpeg
 
 # Install build tools
-sudo apt install git gradle
+sudo apt install git
 ```
 
 #### 2. Set JAVA_HOME
@@ -124,6 +164,9 @@ source ~/.bashrc
 git clone https://github.com/JorenSix/Panako.git
 cd Panako
 
+# Make Gradle wrapper executable (may be needed after cloning)
+chmod +x gradlew
+
 # Build Panako
 ./gradlew shadowJar
 
@@ -131,7 +174,18 @@ cd Panako
 ls build/libs/panako-*-all.jar
 ```
 
-#### 4. Install This Wrapper
+> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+
+#### 4. Set Panako Path (Important!)
+
+The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
+```bash
+# Add to ~/.bashrc
+echo 'export PANAKO_DIR="/path/to/your/Panako"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### 5. Install This Wrapper
 ```bash
 # Clone this repository
 git clone https://github.com/SynthAether/panako-python-wrapper.git
@@ -139,6 +193,16 @@ cd panako-python-wrapper
 
 # Make panako.py executable
 chmod +x panako.py
+```
+
+**Optional:** To run `panako.py` from anywhere, add it to your PATH:
+```bash
+# Add to ~/.bashrc
+echo 'export PATH="$PATH:/path/to/panako-python-wrapper"' >> ~/.bashrc
+source ~/.bashrc
+
+# Now you can run from anywhere:
+panako.py stats
 ```
 
 ## Configuration
