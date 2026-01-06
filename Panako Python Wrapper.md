@@ -41,8 +41,20 @@ The original Panako requires complex Java commands with multiple flags. This wra
 # Install Java 17
 brew install openjdk@17
 
-# Set JAVA_HOME (add to ~/.zshrc or ~/.bash_profile)
-export JAVA_HOME="/opt/homebrew/Cellar/openjdk@17/17.0.17/libexec/openjdk.jdk/Contents/Home"
+# Add Java to PATH (add to ~/.zshrc or ~/.bash_profile)
+# For Apple Silicon (M1/M2/M3):
+export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+
+# For Intel Macs:
+# export PATH="/usr/local/opt/openjdk@17/bin:$PATH"
+# export JAVA_HOME="/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+
+# Create symlink for system Java wrappers to find this JDK (optional)
+# Apple Silicon:
+sudo ln -sfn /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk
+# Intel:
+# sudo ln -sfn /usr/local/opt/openjdk@17/libexec/openjdk.jdk /Library/Java/JavaVirtualMachines/openjdk-17.jdk
 
 # Install LMDB
 brew install lmdb
@@ -97,7 +109,12 @@ sudo apt install git gradle
 #### 2. Set JAVA_HOME
 ```bash
 # Add to ~/.bashrc
+# For AMD64/x86_64 systems:
 echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
+
+# For ARM64/aarch64 systems (e.g., Raspberry Pi, AWS Graviton):
+# echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64' >> ~/.bashrc
+
 source ~/.bashrc
 ```
 
@@ -117,7 +134,7 @@ ls build/libs/panako-*-all.jar
 #### 4. Install This Wrapper
 ```bash
 # Clone this repository
-git clone https://github.com/YOUR_USERNAME/panako-python-wrapper.git
+git clone https://github.com/SynthAether/panako-python-wrapper.git
 cd panako-python-wrapper
 
 # Make panako.py executable
@@ -126,14 +143,20 @@ chmod +x panako.py
 
 ## Configuration
 
-### Update Panako Path
+### Setting the Panako Path
 
-Edit `panako.py` and update the default Panako directory:
-```python
-def __init__(self, panako_dir="/path/to/your/Panako"):
+The wrapper looks for Panako in the following order:
+1. Path passed directly to the constructor
+2. `PANAKO_DIR` environment variable
+3. Default: `~/Panako`
+
+**Option 1: Set environment variable (recommended)**
+```bash
+# Add to ~/.zshrc (macOS) or ~/.bashrc (Linux)
+export PANAKO_DIR="/path/to/your/Panako"
 ```
 
-Or specify it when creating the instance:
+**Option 2: Specify when creating the instance**
 ```python
 from panako import Panako
 panako = Panako(panako_dir="/path/to/your/Panako")
@@ -166,7 +189,7 @@ python3 panako.py batch /path/to/queries
 # Show database statistics
 python3 panako.py stats
 
-# List cached files
+# List cached fingerprint files
 python3 panako.py list
 
 # Delete entries
@@ -175,6 +198,9 @@ python3 panako.py delete /path/to/audio.wav
 # Clear entire database (with confirmation)
 python3 panako.py clear
 ```
+
+#### Supported Audio Formats
+The wrapper processes WAV files by default. With ffmpeg installed, Panako can handle additional formats including MP3, FLAC, OGG, M4A, and most other audio formats that ffmpeg supports.
 
 ### Python API
 
@@ -305,13 +331,19 @@ Frequency factor: 1.000 (perfect pitch match)
 
 **Solution:**
 ```bash
-# macOS
+# macOS (Apple Silicon)
 brew install openjdk@17
-export JAVA_HOME="/opt/homebrew/Cellar/openjdk@17/17.0.17/libexec/openjdk.jdk/Contents/Home"
+export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
 
-# Ubuntu
+# macOS (Intel)
+brew install openjdk@17
+export PATH="/usr/local/opt/openjdk@17/bin:$PATH"
+export JAVA_HOME="/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home"
+
+# Ubuntu/Debian
 sudo apt install openjdk-17-jdk
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64  # or java-17-openjdk-arm64 for ARM
 ```
 
 ### LMDB Library Not Found
@@ -389,14 +421,10 @@ OLAF_HIT_THRESHOLD = 20
 ## Project Structure
 ```
 panako-python-wrapper/
-├── panako.py              # Main wrapper class
-├── README.md              # This file
-├── LICENSE                # MIT License
-├── requirements.txt       # Python dependencies (none!)
-├── .gitignore            # Git ignore rules
-└── examples/             # Usage examples
-    ├── basic_usage.py
-    └── batch_matching.py
+├── panako.py                    # Main wrapper class and CLI
+├── Panako Python Wrapper.md     # This documentation file
+├── .gitignore                   # Git ignore rules
+└── .gitattributes               # Git attributes
 ```
 
 ## Contributing
@@ -426,6 +454,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/YOUR_USERNAME/panako-python-wrapper/issues)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/SynthAether/panako-python-wrapper/issues)
 - **Panako Documentation**: https://panako.be/
 - **Discussions**: Open a discussion for questions and ideas
