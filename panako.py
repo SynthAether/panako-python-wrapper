@@ -10,44 +10,84 @@ import sys
 from pathlib import Path
 
 class Panako:
-    def __init__(self, panako_dir="/Users/sufian/Work/Panako"):
+    def __init__(self, panako_dir=None):
         """
         Initialize Panako wrapper
-        
+
         Args:
             panako_dir: Path to Panako installation directory
+                        If not provided, looks for PANAKO_DIR environment variable
+                        or defaults to ~/Panako
         """
+        if panako_dir is None:
+            panako_dir = os.environ.get('PANAKO_DIR', os.path.expanduser('~/Panako'))
+
         self.panako_dir = Path(panako_dir)
         self.jar_path = self.panako_dir / "build/libs"
-        
+
+        # Detect platform
+        self.platform = sys.platform  # 'darwin', 'linux', 'win32'
+
         # Setup environment
         self._setup_environment()
-        
+
         # Build Java command base
         self.java_cmd = self._build_java_command()
         
     def _setup_environment(self):
         """Setup required environment variables"""
-        # LMDB library path for macOS
-        os.environ['DYLD_LIBRARY_PATH'] = '/opt/homebrew/lib:' + os.environ.get('DYLD_LIBRARY_PATH', '')
-        
-        # Ensure JAVA_HOME is set (for M1 Macs with Homebrew Java)
-        if 'JAVA_HOME' not in os.environ:
-            # Try to find Java installation
-            java_homes = [
-                '/opt/homebrew/Cellar/openjdk@17',
-                '/usr/local/Cellar/openjdk@17',
-                '/Library/Java/JavaVirtualMachines',
-            ]
-            for java_home in java_homes:
-                if os.path.exists(java_home):
-                    # Find the actual JDK path
-                    for item in os.listdir(java_home):
-                        full_path = os.path.join(java_home, item)
-                        if os.path.isdir(full_path):
-                            os.environ['JAVA_HOME'] = full_path
+        if self.platform == 'darwin':
+            # LMDB library path for macOS
+            # Try Apple Silicon path first, then Intel
+            lib_paths = ['/opt/homebrew/lib', '/usr/local/lib']
+            existing_paths = [p for p in lib_paths if os.path.exists(p)]
+            if existing_paths:
+                os.environ['DYLD_LIBRARY_PATH'] = ':'.join(existing_paths) + ':' + os.environ.get('DYLD_LIBRARY_PATH', '')
+
+            # Ensure JAVA_HOME is set (for Macs with Homebrew Java)
+            if 'JAVA_HOME' not in os.environ:
+                java_homes = [
+                    # Apple Silicon paths
+                    '/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home',
+                    '/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home',
+                    # Intel Mac paths
+                    '/usr/local/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home',
+                    '/usr/local/opt/openjdk/libexec/openjdk.jdk/Contents/Home',
+                    # System Java
+                    '/Library/Java/JavaVirtualMachines',
+                ]
+                for java_home in java_homes:
+                    if os.path.exists(java_home):
+                        if java_home.endswith('JavaVirtualMachines'):
+                            # Find the actual JDK path
+                            for item in os.listdir(java_home):
+                                full_path = os.path.join(java_home, item, 'Contents/Home')
+                                if os.path.isdir(full_path):
+                                    os.environ['JAVA_HOME'] = full_path
+                                    break
+                        else:
+                            os.environ['JAVA_HOME'] = java_home
+                        if 'JAVA_HOME' in os.environ:
                             break
-                    if 'JAVA_HOME' in os.environ:
+
+        elif self.platform == 'linux':
+            # LMDB library path for Linux
+            lib_paths = ['/usr/lib', '/usr/local/lib', '/usr/lib/x86_64-linux-gnu', '/usr/lib/aarch64-linux-gnu']
+            existing_paths = [p for p in lib_paths if os.path.exists(p)]
+            if existing_paths:
+                os.environ['LD_LIBRARY_PATH'] = ':'.join(existing_paths) + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+
+            # Ensure JAVA_HOME is set for Linux
+            if 'JAVA_HOME' not in os.environ:
+                java_homes = [
+                    '/usr/lib/jvm/java-17-openjdk-amd64',
+                    '/usr/lib/jvm/java-17-openjdk-arm64',
+                    '/usr/lib/jvm/java-17-openjdk',
+                    '/usr/lib/jvm/default-java',
+                ]
+                for java_home in java_homes:
+                    if os.path.exists(java_home):
+                        os.environ['JAVA_HOME'] = java_home
                         break
     
     def _build_java_command(self):
@@ -56,18 +96,29 @@ class Panako:
         jar_files = list(self.jar_path.glob("panako-*-all.jar"))
         if not jar_files:
             raise FileNotFoundError(f"Panako JAR not found in {self.jar_path}")
-        
+
         jar_file = jar_files[0]
-        
+
+        # Determine library path based on platform
+        if self.platform == 'darwin':
+            # macOS: try Apple Silicon first, then Intel
+            lib_paths = ['/opt/homebrew/lib', '/usr/local/lib']
+        else:
+            # Linux
+            lib_paths = ['/usr/lib', '/usr/local/lib', '/usr/lib/x86_64-linux-gnu', '/usr/lib/aarch64-linux-gnu']
+
+        existing_lib_paths = [p for p in lib_paths if os.path.exists(p)]
+        java_library_path = ':'.join(existing_lib_paths) if existing_lib_paths else '/usr/lib'
+
         # Build Java command with all required flags
         java_opts = [
             'java',
             '--add-opens', 'java.base/java.nio=ALL-UNNAMED',
             '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
-            '-Djava.library.path=/opt/homebrew/lib',
+            f'-Djava.library.path={java_library_path}',
             '-jar', str(jar_file)
         ]
-        
+
         return java_opts
     
     def _run_command(self, *args, capture_output=False):
@@ -267,13 +318,14 @@ def main():
         print("\nUsage:")
         print("  python3 panako.py store <file_or_directory>")
         print("  python3 panako.py query <query_file>")
+        print("  python3 panako.py batch <query_directory>")
+        print("  python3 panako.py stats")
+        print("  python3 panako.py list")
         print("  python3 panako.py delete <file_or_directory>")
         print("  python3 panako.py clear")
-        print("  python3 panako.py stats")
-        print("  python3 panako.py batch <query_directory>")
         print("\nExamples:")
-        print("  python3 panako.py store /Users/sufian/Data/Vangelis/ref")
-        print("  python3 panako.py query '/Users/sufian/Data/Vangelis/queries/test.wav'")
+        print("  python3 panako.py store /path/to/audio/library")
+        print("  python3 panako.py query '/path/to/query/audio.wav'")
         print("  python3 panako.py stats")
         sys.exit(0)
     
