@@ -76,6 +76,12 @@ source ~/.zshrc
 # source ~/.bash_profile
 ```
 
+**Verify Java installation:**
+```bash
+java -version
+# Should show: openjdk version "17.x.x"
+```
+
 #### 3. Install Panako
 ```bash
 # Clone Panako repository
@@ -93,6 +99,8 @@ ls build/libs/panako-*-all.jar
 ```
 
 > **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+
+> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes.
 
 #### 4. Set Panako Path (Important!)
 
@@ -113,6 +121,8 @@ cd panako-python-wrapper
 chmod +x panako.py
 ```
 
+> **Note:** You can run the wrapper directly with `python3 panako.py ...` without any PATH configuration. The PATH addition below is optional for convenience.
+
 **Optional:** To run `panako.py` from anywhere, add it to your PATH:
 ```bash
 # Add to ~/.zshrc (or ~/.bash_profile for bash)
@@ -122,6 +132,26 @@ source ~/.zshrc
 # Now you can run from anywhere:
 panako.py stats
 ```
+
+#### 6. Verify Installation
+Run these commands to verify everything is set up correctly:
+```bash
+# Check Java is available
+java -version
+
+# Check the Panako JAR was built
+ls "$PANAKO_DIR"/build/libs/panako-*-all.jar
+# Or if using default location:
+ls ~/Panako/build/libs/panako-*-all.jar
+
+# Test the wrapper
+python3 panako.py --help
+
+# Check database status
+python3 panako.py stats
+```
+
+> **Note:** The wrapper automatically configures library paths for LMDB and Java on macOS (via `DYLD_LIBRARY_PATH`), so you typically don't need to set these manually.
 
 ### Ubuntu/Debian Installation
 
@@ -146,6 +176,8 @@ sudo apt install ffmpeg
 sudo apt install git
 ```
 
+> **Note:** The wrapper uses only Python standard library modules, so no additional Python packages or virtual environment are required. If you prefer to use a virtualenv for isolation, you can create one with `python3 -m venv .venv && source .venv/bin/activate`, but it's entirely optional.
+
 #### 2. Set JAVA_HOME
 ```bash
 # Add to ~/.bashrc
@@ -156,6 +188,12 @@ echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64' >> ~/.bashrc
 # echo 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64' >> ~/.bashrc
 
 source ~/.bashrc
+```
+
+**Verify Java installation:**
+```bash
+java -version
+# Should show: openjdk version "17.x.x"
 ```
 
 #### 3. Install Panako
@@ -176,6 +214,8 @@ ls build/libs/panako-*-all.jar
 
 > **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
 
+> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes.
+
 #### 4. Set Panako Path (Important!)
 
 The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
@@ -195,6 +235,8 @@ cd panako-python-wrapper
 chmod +x panako.py
 ```
 
+> **Note:** You can run the wrapper directly with `python3 panako.py ...` without any PATH configuration. The PATH addition below is optional for convenience.
+
 **Optional:** To run `panako.py` from anywhere, add it to your PATH:
 ```bash
 # Add to ~/.bashrc
@@ -204,6 +246,26 @@ source ~/.bashrc
 # Now you can run from anywhere:
 panako.py stats
 ```
+
+#### 6. Verify Installation
+Run these commands to verify everything is set up correctly:
+```bash
+# Check Java is available
+java -version
+
+# Check the Panako JAR was built
+ls "$PANAKO_DIR"/build/libs/panako-*-all.jar
+# Or if using default location:
+ls ~/Panako/build/libs/panako-*-all.jar
+
+# Test the wrapper
+python3 panako.py --help
+
+# Check database status
+python3 panako.py stats
+```
+
+> **Note:** The wrapper automatically configures library paths for LMDB and Java on Linux (via `LD_LIBRARY_PATH`), so you typically don't need to set these manually.
 
 ## Configuration
 
