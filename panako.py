@@ -122,7 +122,9 @@ class Panako:
 
         # Check Java
         try:
-            result = subprocess.run(['java', '-version'], capture_output=True, text=True, stderr=subprocess.STDOUT, timeout=5)
+            result = subprocess.run(['java', '-version'], capture_output=True, text=True, timeout=5)
+            # Java outputs version to stderr, so check stderr
+            version_output = result.stderr if result.stderr else result.stdout
             if result.returncode != 0:
                 errors.append("Java not found or not working properly")
                 if self.platform == 'darwin':
@@ -519,8 +521,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         # Check Java
         print(f"Java:")
         try:
-            result = subprocess.run(['java', '-version'], capture_output=True, text=True, stderr=subprocess.STDOUT, timeout=5)
-            java_version = result.stdout.split('\n')[0]
+            result = subprocess.run(['java', '-version'], capture_output=True, text=True, timeout=5)
+            # Java outputs version to stderr, so check stderr
+            version_output = result.stderr if result.stderr else result.stdout
+            java_version = version_output.split('\n')[0] if version_output else "Unknown"
             print(f"  Status: ✓ {java_version}")
             if 'version "17' in java_version or ' 17.' in java_version:
                 print(f"  Version: ✓ Java 17 (recommended)")

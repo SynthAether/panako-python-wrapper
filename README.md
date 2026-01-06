@@ -23,6 +23,21 @@ The original Panako requires complex Java commands with multiple flags. This wra
 
 ## Installation
 
+### Project Structure
+
+This wrapper works alongside Panako as separate projects. We recommend creating a parent directory to hold both repositories:
+
+```
+audio-fingerprinting/          # Parent directory (choose any name you like)
+├── Panako/                    # Joren Six's Panako (Java audio fingerprinting engine)
+└── panako-python-wrapper/     # This Python wrapper
+```
+
+This structure allows you to:
+- Keep the projects separate (different repositories, licenses, update cycles)
+- Use a simple relative path: `export PANAKO_DIR=../Panako`
+- Maintain a clean, explicit setup
+
 ### Prerequisites
 
 - Python 3.7+
@@ -82,8 +97,13 @@ java -version
 # Should show: openjdk version "17.x.x"
 ```
 
-#### 3. Install Panako
+#### 3. Create Project Directory and Install Both Repositories
+
 ```bash
+# Create parent directory (choose any name you like)
+mkdir -p ~/audio-fingerprinting
+cd ~/audio-fingerprinting
+
 # Clone Panako repository
 git clone https://github.com/JorenSix/Panako.git
 cd Panako
@@ -96,24 +116,11 @@ chmod +x gradlew
 
 # Verify build
 ls build/libs/panako-*-all.jar
-```
 
-> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+# Return to parent directory
+cd ..
 
-> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes.
-
-#### 4. Set Panako Path (Important!)
-
-The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
-```bash
-# Add to ~/.zshrc (or ~/.bash_profile for bash)
-echo 'export PANAKO_DIR="/path/to/your/Panako"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-#### 5. Install This Wrapper
-```bash
-# Clone this repository
+# Clone this wrapper repository
 git clone https://github.com/SynthAether/panako-python-wrapper.git
 cd panako-python-wrapper
 
@@ -121,37 +128,40 @@ cd panako-python-wrapper
 chmod +x panako.py
 ```
 
-> **Note:** You can run the wrapper directly with `python3 panako.py ...` without any PATH configuration. The PATH addition below is optional for convenience.
+> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
 
-**Optional:** To run `panako.py` from anywhere, add it to your PATH:
+> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes (~50-100MB download, 2-5 minutes build time).
+
+#### 4. Set PANAKO_DIR and Verify Installation
+
 ```bash
-# Add to ~/.zshrc (or ~/.bash_profile for bash)
-echo 'export PATH="$PATH:/path/to/panako-python-wrapper"' >> ~/.zshrc
-source ~/.zshrc
+# From within the panako-python-wrapper directory:
+export PANAKO_DIR=../Panako
 
-# Now you can run from anywhere:
-panako.py stats
+# Verify the setup
+python3 panako.py verify
 ```
 
-#### 6. Verify Installation
-Run these commands to verify everything is set up correctly:
-```bash
-# Check Java is available
-java -version
-
-# Check the Panako JAR was built
-ls "$PANAKO_DIR"/build/libs/panako-*-all.jar
-# Or if using default location:
-ls ~/Panako/build/libs/panako-*-all.jar
-
-# Test the wrapper
-python3 panako.py --help
-
-# Check database status
-python3 panako.py stats
-```
+> **Important:** The `export PANAKO_DIR=../Panako` command sets the path for your current terminal session only. This is intentional - it keeps your environment clean and makes the setup explicit. You'll need to run this command each time you open a new terminal and want to use the wrapper.
 
 > **Note:** The wrapper automatically configures library paths for LMDB and Java on macOS (via `DYLD_LIBRARY_PATH`), so you typically don't need to set these manually.
+
+#### 5. Quick Start
+
+```bash
+# Each time you start a new terminal session, from the panako-python-wrapper directory:
+cd ~/audio-fingerprinting/panako-python-wrapper
+export PANAKO_DIR=../Panako
+
+# Build your database
+python3 panako.py store ~/Music
+
+# Query a file
+python3 panako.py query ~/unknown_song.wav
+
+# Check what's indexed
+python3 panako.py stats
+```
 
 ### Ubuntu/Debian Installation
 
@@ -196,8 +206,13 @@ java -version
 # Should show: openjdk version "17.x.x"
 ```
 
-#### 3. Install Panako
+#### 3. Create Project Directory and Install Both Repositories
+
 ```bash
+# Create parent directory (choose any name you like)
+mkdir -p ~/audio-fingerprinting
+cd ~/audio-fingerprinting
+
 # Clone Panako repository
 git clone https://github.com/JorenSix/Panako.git
 cd Panako
@@ -210,24 +225,11 @@ chmod +x gradlew
 
 # Verify build
 ls build/libs/panako-*-all.jar
-```
 
-> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
+# Return to parent directory
+cd ..
 
-> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes.
-
-#### 4. Set Panako Path (Important!)
-
-The wrapper defaults to looking for Panako in `~/Panako`. If you cloned Panako elsewhere, set `PANAKO_DIR`:
-```bash
-# Add to ~/.bashrc
-echo 'export PANAKO_DIR="/path/to/your/Panako"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-#### 5. Install This Wrapper
-```bash
-# Clone this repository
+# Clone this wrapper repository
 git clone https://github.com/SynthAether/panako-python-wrapper.git
 cd panako-python-wrapper
 
@@ -235,60 +237,102 @@ cd panako-python-wrapper
 chmod +x panako.py
 ```
 
-> **Note:** You can run the wrapper directly with `python3 panako.py ...` without any PATH configuration. The PATH addition below is optional for convenience.
+> **Note:** If you get a "Permission denied" error when running `./gradlew`, the executable bit may have been lost during cloning. Run `chmod +x gradlew` first.
 
-**Optional:** To run `panako.py` from anywhere, add it to your PATH:
+> **Note:** The first time you run `./gradlew shadowJar`, Gradle will download dependencies from the internet. This requires an active internet connection and may take a few minutes (~50-100MB download, 2-5 minutes build time).
+
+#### 4. Set PANAKO_DIR and Verify Installation
+
 ```bash
-# Add to ~/.bashrc
-echo 'export PATH="$PATH:/path/to/panako-python-wrapper"' >> ~/.bashrc
-source ~/.bashrc
+# From within the panako-python-wrapper directory:
+export PANAKO_DIR=../Panako
 
-# Now you can run from anywhere:
-panako.py stats
+# Verify the setup
+python3 panako.py verify
 ```
 
-#### 6. Verify Installation
-Run these commands to verify everything is set up correctly:
+> **Important:** The `export PANAKO_DIR=../Panako` command sets the path for your current terminal session only. This is intentional - it keeps your environment clean and makes the setup explicit. You'll need to run this command each time you open a new terminal and want to use the wrapper.
+
+> **Note:** The wrapper automatically configures library paths for LMDB and Java on Linux (via `LD_LIBRARY_PATH`), so you typically don't need to set these manually.
+
+#### 5. Quick Start
+
 ```bash
-# Check Java is available
-java -version
+# Each time you start a new terminal session, from the panako-python-wrapper directory:
+cd ~/audio-fingerprinting/panako-python-wrapper
+export PANAKO_DIR=../Panako
 
-# Check the Panako JAR was built
-ls "$PANAKO_DIR"/build/libs/panako-*-all.jar
-# Or if using default location:
-ls ~/Panako/build/libs/panako-*-all.jar
+# Build your database
+python3 panako.py store ~/Music
 
-# Test the wrapper
-python3 panako.py --help
+# Query a file
+python3 panako.py query ~/unknown_song.wav
 
-# Check database status
+# Check what's indexed
 python3 panako.py stats
 ```
 
-> **Note:** The wrapper automatically configures library paths for LMDB and Java on Linux (via `LD_LIBRARY_PATH`), so you typically don't need to set these manually.
+### Windows Installation (WSL)
+
+We recommend using Windows Subsystem for Linux (WSL2). Once WSL is set up, follow the Ubuntu/Debian installation instructions above.
 
 ## Configuration
 
 ### Setting the Panako Path
 
-The wrapper looks for Panako in the following order:
-1. Path passed directly to the constructor
-2. `PANAKO_DIR` environment variable
-3. Default: `~/Panako`
+The wrapper needs to know where Panako is installed. Since both repositories are in the same parent directory, you can use a simple relative path.
 
-**Option 1: Set environment variable (recommended)**
+**Recommended Approach (Session-Only):**
 ```bash
-# Add to ~/.zshrc (macOS) or ~/.bashrc (Linux)
-export PANAKO_DIR="/path/to/your/Panako"
+# From within the panako-python-wrapper directory:
+export PANAKO_DIR=../Panako
 ```
 
-**Option 2: Specify when creating the instance**
+This is **session-only and intentional**. It keeps your environment clean and makes the setup explicit. You'll run this command each time you open a new terminal.
+
+**Alternative: Absolute Path (Session-Only):**
+```bash
+export PANAKO_DIR="$HOME/audio-fingerprinting/Panako"
+```
+
+**Alternative: Make It Permanent:**
+
+If you prefer to make `PANAKO_DIR` permanent (not recommended, but available):
+```bash
+# Add to ~/.zshrc (macOS) or ~/.bashrc (Linux)
+echo 'export PANAKO_DIR="$HOME/audio-fingerprinting/Panako"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Alternative: Specify in Code:**
 ```python
 from panako import Panako
 panako = Panako(panako_dir="/path/to/your/Panako")
 ```
 
+**Path Resolution Order:**
+
+The wrapper looks for Panako in this order:
+1. Path passed directly to the constructor
+2. `PANAKO_DIR` environment variable
+3. Default: `~/Panako`
+
+**Verify Your Configuration:**
+```bash
+# Always verify your setup
+python3 panako.py verify
+```
+
 ## Usage
+
+### Working Directory
+
+All commands in this section assume you're in the `panako-python-wrapper` directory and have set `PANAKO_DIR`:
+
+```bash
+cd ~/audio-fingerprinting/panako-python-wrapper
+export PANAKO_DIR=../Panako
+```
 
 ### Command Line Interface
 
@@ -325,8 +369,18 @@ python3 panako.py delete /path/to/audio.wav
 python3 panako.py clear
 ```
 
+#### Verify Installation
+```bash
+python3 panako.py verify
+```
+
+#### Get Help
+```bash
+python3 panako.py --help
+```
+
 #### Supported Audio Formats
-The wrapper processes WAV files by default. With ffmpeg installed, Panako can handle additional formats including MP3, FLAC, OGG, M4A, and most other audio formats that ffmpeg supports.
+The wrapper processes **WAV, MP3, FLAC, OGG, M4A, AAC, WMA** formats. WAV files work out of the box. Other formats (MP3/FLAC/etc) require ffmpeg to be installed.
 
 ### Python API
 
@@ -334,8 +388,11 @@ The wrapper processes WAV files by default. With ffmpeg installed, Panako can ha
 ```python
 from panako import Panako
 
-# Initialize
+# Initialize (uses PANAKO_DIR environment variable or default ~/Panako)
 panako = Panako()
+
+# Or specify Panako directory explicitly
+panako = Panako(panako_dir="/path/to/Panako")
 
 # Store audio files
 panako.store("/path/to/reference/audio")
@@ -449,6 +506,74 @@ Frequency factor: 1.000 (perfect pitch match)
 - **70-80%**: Moderate match (similar content)
 - **<70%**: Weak match (may be false positive)
 
+## Tips and Tricks
+
+### Quick Command Alias
+
+To avoid typing `export PANAKO_DIR=../Panako` every time, create a shell alias:
+
+```bash
+# Add to ~/.zshrc (macOS) or ~/.bashrc (Linux):
+alias panako='cd ~/audio-fingerprinting/panako-python-wrapper && export PANAKO_DIR=../Panako && python3 panako.py'
+
+# Then reload your shell config:
+source ~/.zshrc  # or source ~/.bashrc
+
+# Now you can use it from anywhere:
+panako verify
+panako query ~/test.wav
+panako stats
+```
+
+### Directory Structure Reference
+
+```
+~/audio-fingerprinting/              # Your chosen parent directory
+├── Panako/                          # The Java audio fingerprinting engine
+│   ├── build/                       
+│   │   └── libs/
+│   │       └── panako-5.0-all.jar   # Built JAR file (created by Gradle)
+│   ├── gradlew                      # Gradle wrapper script
+│   ├── build.gradle                 # Gradle build configuration
+│   └── src/                         # Java source code
+│
+├── panako-python-wrapper/           # This Python wrapper
+│   ├── panako.py                    # Main wrapper script
+│   ├── README.md                    # This documentation
+│   ├── .gitignore
+│   └── .gitattributes
+│
+└── ~/.panako/                       # Database directory (auto-created)
+    └── dbs/                         # Fingerprint storage
+        ├── olaf_cache/              # Cached fingerprints (.tdb files)
+        └── [LMDB database files]
+```
+
+### Running from Different Directories
+
+**Option 1: Always navigate to wrapper directory first (Recommended)**
+```bash
+cd ~/audio-fingerprinting/panako-python-wrapper
+export PANAKO_DIR=../Panako
+python3 panako.py query ~/test.wav
+```
+
+**Option 2: Use full paths**
+```bash
+# From anywhere:
+PANAKO_DIR="$HOME/audio-fingerprinting/Panako" python3 ~/audio-fingerprinting/panako-python-wrapper/panako.py query ~/test.wav
+```
+
+**Option 3: Add wrapper to PATH with permanent PANAKO_DIR**
+```bash
+# Add to ~/.zshrc or ~/.bashrc:
+export PATH="$PATH:$HOME/audio-fingerprinting/panako-python-wrapper"
+export PANAKO_DIR="$HOME/audio-fingerprinting/Panako"
+
+# Then from anywhere:
+panako.py query ~/test.wav
+```
+
 ## Troubleshooting
 
 ### Java Not Found
@@ -474,14 +599,14 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64  # or java-17-openjdk-arm64 
 
 ### LMDB Library Not Found
 
-**Error:** `UnsatisfiedLinkError: liblmdb.dylib`
+**Error:** `UnsatisfiedLinkError: liblmdb.dylib` or `liblmdb.so`
 
 **Solution:**
 ```bash
 # macOS
 brew install lmdb
 
-# Ubuntu
+# Ubuntu/Debian
 sudo apt install liblmdb-dev
 ```
 
@@ -492,15 +617,49 @@ sudo apt install liblmdb-dev
 **Solution:**
 ```bash
 # Rebuild Panako
-cd /path/to/Panako
+cd ~/audio-fingerprinting/Panako
 ./gradlew clean shadowJar
+
+# Verify the JAR was created
+ls build/libs/panako-*-all.jar
+```
+
+### PANAKO_DIR Points to Wrong Directory
+
+**Error:** `PANAKO_DIR should point to Panako installation, not this wrapper`
+
+**Solution:**
+```bash
+# Make sure you're in the wrapper directory
+cd ~/audio-fingerprinting/panako-python-wrapper
+
+# Set PANAKO_DIR to the sibling Panako directory
+export PANAKO_DIR=../Panako
+
+# Verify
+python3 panako.py verify
 ```
 
 ### Module Access Warnings
 
 **Warning:** `Unable to make field ... accessible`
 
-**Solution:** These are handled automatically by the wrapper. If you still see them, ensure you're using Java 17+.
+**Solution:** These warnings are handled automatically by the wrapper with the `--add-opens` flags. If you still see them, ensure you're using Java 17 or higher:
+```bash
+java -version
+# Should show version 17 or higher
+```
+
+### Permission Denied on gradlew
+
+**Error:** `Permission denied: ./gradlew`
+
+**Solution:**
+```bash
+cd ~/audio-fingerprinting/Panako
+chmod +x gradlew
+./gradlew shadowJar
+```
 
 ## Performance Tips
 
@@ -514,41 +673,55 @@ cd /path/to/Panako
 
 For databases with 10,000+ files:
 - Use SSD storage for the database directory (`~/.panako/dbs`)
-- Increase Java heap size for very large queries
-- Consider splitting into multiple smaller databases
+- Increase Java heap size for very large queries by modifying Panako's configuration
+- Consider splitting into multiple smaller databases by category or time period
+
+### Network and Build Time
+
+- First Panako build requires internet connection (downloads ~50-100MB)
+- Build time: 2-5 minutes on first run, <10 seconds on subsequent runs
+- No internet needed after initial build
 
 ## Advanced Configuration
 
 ### Custom Panako Settings
 
-Panako's configuration is in `~/.panako/config.properties`. Key settings:
+Panako's configuration file is located at `~/.panako/config.properties`. Key settings:
+
 ```properties
-# Matching threshold
+# Matching threshold (higher = stricter matching)
 OLAF_HIT_THRESHOLD = 30
 
-# Time matching tolerance
+# Time matching tolerance (in deciseconds)
 OLAF_MAX_DELTA_T = 300
 
 # Fingerprint sampling rate
 OLAF_SAMPLE_RATE = 16000
+
+# Cache fingerprints for faster repeated queries
+OLAF_CACHE_TO_FILE = TRUE
 ```
 
 ### Adjusting Match Sensitivity
 
-To make matching more/less strict, edit `config.properties`:
+To make matching more or less strict, edit `~/.panako/config.properties`:
+
 ```properties
-# More strict (fewer false positives)
+# More strict matching (fewer false positives, may miss some matches)
 OLAF_HIT_THRESHOLD = 50
 
-# More permissive (more matches, may include false positives)
+# More permissive matching (more matches, may include false positives)
 OLAF_HIT_THRESHOLD = 20
 ```
 
+After changing settings, restart your queries for changes to take effect.
+
 ## Project Structure
+
 ```
 panako-python-wrapper/
 ├── panako.py                    # Main wrapper class and CLI
-├── Panako Python Wrapper.md     # This documentation file
+├── README.md                    # This documentation file
 ├── .gitignore                   # Git ignore rules
 └── .gitattributes               # Git attributes
 ```
@@ -563,23 +736,34 @@ Contributions are welcome! Please:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+Please ensure your PR:
+- Maintains compatibility with both macOS and Linux
+- Includes appropriate error handling
+- Updates documentation if adding new features
+- Follows the existing code style
+
 ## Credits
 
 - **Panako**: Created by Joren Six - https://github.com/JorenSix/Panako
 - **This Wrapper**: Python interface for easier usage
+- **Contributors**: See GitHub contributors page
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
+Panako itself is licensed under AGPL v3. This wrapper is a separate work under MIT license.
+
 ## Related Projects
 
 - [Panako](https://github.com/JorenSix/Panako) - The underlying audio fingerprinting system
-- [Chromaprint](https://acoustid.org/chromaprint) - Alternative fingerprinting system
+- [Chromaprint](https://acoustid.org/chromaprint) - Alternative fingerprinting library
 - [Dejavu](https://github.com/worldveil/dejavu) - Python-based audio fingerprinting
+- [Audfprint](https://github.com/dpwe/audfprint) - Audio fingerprinting using peak landmarks
 
 ## Support
 
 - **Issues**: Report bugs on [GitHub Issues](https://github.com/SynthAether/panako-python-wrapper/issues)
 - **Panako Documentation**: https://panako.be/
 - **Discussions**: Open a discussion for questions and ideas
+- **Panako Support**: For Panako-specific issues, see [Panako's GitHub](https://github.com/JorenSix/Panako)
