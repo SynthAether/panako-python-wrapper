@@ -20,6 +20,7 @@ The original Panako requires complex Java commands with multiple flags. This wra
 - ✅ Works on macOS (including M1/M2/M3) and Linux
 - ✅ Auto-configures library paths
 - ✅ Simplifies batch operations
+- ✅ Automatic duplicate detection (skips already-indexed files)
 
 ## Installation
 
@@ -343,7 +344,12 @@ python3 panako.py store /path/to/audio.wav
 
 # Store entire directory (recursive)
 python3 panako.py store /path/to/audio/directory
+
+# Force re-index (even if already indexed)
+python3 panako.py store --force /path/to/audio/directory
 ```
+
+> **Note:** The `store` command automatically skips files that have already been indexed. Use `--force` to re-index them anyway. See [Duplicate Detection](#duplicate-detection) for details.
 
 #### Query Database
 ```bash
@@ -368,6 +374,14 @@ python3 panako.py delete /path/to/audio.wav
 # Clear entire database (with confirmation)
 python3 panako.py clear
 ```
+
+#### Initialize Manifest (for existing databases)
+```bash
+# Mark files as already indexed (without re-processing)
+python3 panako.py init-manifest /path/to/already/indexed/folder
+```
+
+Use this when you have files already in the database and want to set up duplicate detection. See [Duplicate Detection](#duplicate-detection) for details.
 
 #### Verify Installation
 ```bash
@@ -394,8 +408,14 @@ panako = Panako()
 # Or specify Panako directory explicitly
 panako = Panako(panako_dir="/path/to/Panako")
 
-# Store audio files
+# Store audio files (skips already-indexed files)
 panako.store("/path/to/reference/audio")
+
+# Force re-index even if already indexed
+panako.store("/path/to/reference/audio", force=True)
+
+# Mark files as indexed without processing (for existing databases)
+panako.init_manifest("/path/to/already/indexed/folder")
 
 # Query
 panako.query("/path/to/query.wav")
@@ -530,7 +550,7 @@ panako stats
 ```
 ~/audio-fingerprinting/              # Your chosen parent directory
 ├── Panako/                          # The Java audio fingerprinting engine
-│   ├── build/                       
+│   ├── build/
 │   │   └── libs/
 │   │       └── panako-5.0-all.jar   # Built JAR file (created by Gradle)
 │   ├── gradlew                      # Gradle wrapper script
@@ -540,10 +560,12 @@ panako stats
 ├── panako-python-wrapper/           # This Python wrapper
 │   ├── panako.py                    # Main wrapper script
 │   ├── README.md                    # This documentation
+│   ├── LICENSE                      # MIT License
 │   ├── .gitignore
 │   └── .gitattributes
 │
 └── ~/.panako/                       # Database directory (auto-created)
+    ├── indexed_files.txt            # Manifest tracking indexed files
     └── dbs/                         # Fingerprint storage
         ├── olaf_cache/              # Cached fingerprints (.tdb files)
         └── [LMDB database files]
@@ -573,6 +595,59 @@ export PANAKO_DIR="$HOME/audio-fingerprinting/Panako"
 # Then from anywhere:
 panako.py query ~/test.wav
 ```
+
+## Duplicate Detection
+
+The wrapper automatically tracks which files have been indexed to prevent duplicate processing. This is useful when:
+
+- Adding new files to an existing database
+- Re-running `store` on a directory with mixed old and new files
+- Managing large audio collections across multiple sessions
+
+### How It Works
+
+1. When you run `store`, the wrapper checks each file against a manifest (`~/.panako/indexed_files.txt`)
+2. Files already in the manifest are skipped automatically
+3. Successfully indexed files are added to the manifest
+4. The `delete` and `clear` commands also update the manifest
+
+### Commands
+
+```bash
+# Store command automatically skips already-indexed files
+python3 panako.py store ~/Music
+# Output: "Skipping 500 already-indexed files (use --force to re-index)"
+# Only processes new files
+
+# Force re-index everything (ignores manifest)
+python3 panako.py store --force ~/Music
+
+# Initialize manifest for files already in database
+# (Use this once if you have an existing database)
+python3 panako.py init-manifest ~/Music
+```
+
+### Setting Up for an Existing Database
+
+If you already have files indexed in Panako and want to enable duplicate detection:
+
+```bash
+# Mark your already-indexed folder as "done"
+python3 panako.py init-manifest /path/to/already/indexed/folder
+
+# Now you can safely add new folders - duplicates will be skipped
+python3 panako.py store /path/to/new/folder
+```
+
+### Manifest File Location
+
+The manifest is stored at `~/.panako/indexed_files.txt`. It's a simple text file with one file path per line. You can:
+
+- View it: `cat ~/.panako/indexed_files.txt`
+- Count entries: `wc -l ~/.panako/indexed_files.txt`
+- Clear it manually: `rm ~/.panako/indexed_files.txt`
+
+> **Note:** The `clear` command automatically deletes the manifest along with the database.
 
 ## Troubleshooting
 
@@ -722,6 +797,7 @@ After changing settings, restart your queries for changes to take effect.
 panako-python-wrapper/
 ├── panako.py                    # Main wrapper class and CLI
 ├── README.md                    # This documentation file
+├── LICENSE                      # MIT License
 ├── .gitignore                   # Git ignore rules
 └── .gitattributes               # Git attributes
 ```
