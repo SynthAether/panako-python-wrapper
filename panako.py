@@ -19,6 +19,9 @@ class Panako:
     # Supported audio formats (when ffmpeg is available)
     AUDIO_EXTENSIONS = ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma']
 
+    # Manifest file to track indexed files
+    MANIFEST_FILE = Path.home() / ".panako" / "indexed_files.txt"
+
     def __init__(self, panako_dir=None, skip_validation=False, defer_build=False):
         """
         Initialize Panako wrapper
@@ -282,19 +285,53 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             print(f"Error: Java executable not found. Please install Java 17+", file=sys.stderr)
             return None
 
-    def store(self, path):
+    def _load_manifest(self):
+        """Load set of already-indexed file paths from manifest"""
+        if self.MANIFEST_FILE.exists():
+            with open(self.MANIFEST_FILE, 'r') as f:
+                return set(line.strip() for line in f if line.strip())
+        return set()
+
+    def _save_to_manifest(self, file_path):
+        """Append a file path to the manifest"""
+        # Ensure directory exists
+        self.MANIFEST_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.MANIFEST_FILE, 'a') as f:
+            f.write(str(file_path) + '\n')
+
+    def _remove_from_manifest(self, file_path):
+        """Remove a file path from the manifest"""
+        if not self.MANIFEST_FILE.exists():
+            return
+        indexed = self._load_manifest()
+        indexed.discard(str(file_path))
+        with open(self.MANIFEST_FILE, 'w') as f:
+            for path in sorted(indexed):
+                f.write(path + '\n')
+
+    def store(self, path, force=False):
         """
         Add audio file(s) to database
 
         Args:
             path: Path to audio file or directory
+            force: If True, re-index even if already in manifest
         """
         # Expand ~ in paths
         path = Path(os.path.expanduser(str(path))).resolve()
 
+        # Load manifest of already-indexed files
+        indexed = self._load_manifest()
+
         if path.is_file():
+            if str(path) in indexed and not force:
+                print(f"Skipping (already indexed): {path.name}")
+                print("  Use --force to re-index")
+                return
             print(f"Storing: {path.name}")
-            self._run_command('store', str(path))
+            result = self._run_command('store', str(path), capture_output=True)
+            if result:
+                self._save_to_manifest(path)
         elif path.is_dir():
             print(f"Storing audio files from: {path}")
             # Find all audio files
@@ -307,13 +344,29 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                 print(f"Supported formats: {', '.join(self.AUDIO_EXTENSIONS)}")
                 return
 
-            print(f"Found {len(audio_files)} audio files")
+            # Filter out already-indexed files unless force is True
+            if not force:
+                new_files = [f for f in audio_files if str(f.resolve()) not in indexed]
+                skipped = len(audio_files) - len(new_files)
+                if skipped > 0:
+                    print(f"Skipping {skipped} already-indexed files (use --force to re-index)")
+                audio_files = new_files
+
+            if not audio_files:
+                print("No new files to index.")
+                return
+
+            print(f"Found {len(audio_files)} audio files to index")
 
             # Store all files with progress indication
             for i, audio_file in enumerate(sorted(audio_files), 1):
                 print(f"  [{i}/{len(audio_files)}] {audio_file.name[:60]}...", end=" ", flush=True)
                 result = self._run_command('store', str(audio_file), capture_output=True)
-                print("✓" if result else "✗")
+                if result:
+                    self._save_to_manifest(audio_file.resolve())
+                    print("✓")
+                else:
+                    print("✗")
         else:
             print(f"Error: {path} not found", file=sys.stderr)
 
@@ -392,6 +445,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         if path.is_file():
             print(f"Deleting: {path.name}")
             self._run_command('delete', str(path))
+            self._remove_from_manifest(path)
         elif path.is_dir():
             print(f"Deleting audio files from: {path}")
             # Find all audio files
@@ -407,6 +461,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
             for audio_file in sorted(audio_files):
                 self._run_command('delete', str(audio_file))
+                self._remove_from_manifest(audio_file.resolve())
         else:
             print(f"Error: {path} not found", file=sys.stderr)
 
@@ -425,6 +480,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print("Clearing database...")
         self._run_command('clear')
+        # Also clear the manifest
+        if self.MANIFEST_FILE.exists():
+            self.MANIFEST_FILE.unlink()
+            print("Manifest cleared.")
         print("Database cleared.")
 
     def stats(self):
@@ -624,7 +683,8 @@ def print_help():
     print("  python3 panako.py <command> [arguments]")
     print("\nCommands:")
     print("  verify                      Check if Panako is properly installed")
-    print("  store <path>                Add audio file(s) to database")
+    print("  store [--force] <path>      Add audio file(s) to database")
+    print("                              Skips already-indexed files unless --force is used")
     print("  query <file>                Search for a match in database")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
@@ -634,6 +694,7 @@ def print_help():
     print("\nExamples:")
     print("  python3 panako.py verify")
     print("  python3 panako.py store ~/Music")
+    print("  python3 panako.py store --force ~/Music   # Re-index all files")
     print("  python3 panako.py query ~/unknown_song.wav")
     print("  python3 panako.py batch ~/test_files")
     print("  python3 panako.py stats")
@@ -679,9 +740,12 @@ def main():
     if command == 'store':
         if len(sys.argv) < 3:
             print("Error: Provide path to store", file=sys.stderr)
-            print("Usage: python3 panako.py store <file_or_directory>", file=sys.stderr)
+            print("Usage: python3 panako.py store [--force] <file_or_directory>", file=sys.stderr)
             sys.exit(1)
-        panako.store(sys.argv[2])
+        # Check for --force flag
+        force = '--force' in sys.argv
+        path_arg = [arg for arg in sys.argv[2:] if arg != '--force'][0]
+        panako.store(path_arg, force=force)
 
     elif command == 'query':
         if len(sys.argv) < 3:
