@@ -493,6 +493,58 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         print("="*80 + "\n")
         self._run_command('stats')
 
+    def init_manifest(self, path):
+        """
+        Mark audio files as already indexed (without re-processing them).
+        Use this to initialize the manifest for files you've already indexed.
+
+        Args:
+            path: Path to audio file or directory to mark as indexed
+        """
+        # Expand ~ in paths
+        path = Path(os.path.expanduser(str(path))).resolve()
+
+        # Load existing manifest
+        indexed = self._load_manifest()
+        added = 0
+
+        if path.is_file():
+            if str(path) not in indexed:
+                self._save_to_manifest(path)
+                added = 1
+                print(f"Marked as indexed: {path.name}")
+            else:
+                print(f"Already in manifest: {path.name}")
+        elif path.is_dir():
+            print(f"Scanning for audio files in: {path}")
+            # Find all audio files
+            audio_files = []
+            for ext in self.AUDIO_EXTENSIONS:
+                audio_files.extend(path.rglob(f"*{ext}"))
+
+            if not audio_files:
+                print(f"No audio files found in {path}")
+                print(f"Supported formats: {', '.join(self.AUDIO_EXTENSIONS)}")
+                return
+
+            print(f"Found {len(audio_files)} audio files")
+
+            for audio_file in sorted(audio_files):
+                resolved = str(audio_file.resolve())
+                if resolved not in indexed:
+                    self._save_to_manifest(audio_file.resolve())
+                    indexed.add(resolved)  # Update local set to avoid duplicates
+                    added += 1
+
+            print(f"\nAdded {added} files to manifest")
+            if added < len(audio_files):
+                print(f"Skipped {len(audio_files) - added} files (already in manifest)")
+        else:
+            print(f"Error: {path} not found", file=sys.stderr)
+            return
+
+        print(f"Manifest location: {self.MANIFEST_FILE}")
+
     def batch_query(self, query_dir, threshold=None):
         """
         Query all audio files in a directory
@@ -685,6 +737,8 @@ def print_help():
     print("  verify                      Check if Panako is properly installed")
     print("  store [--force] <path>      Add audio file(s) to database")
     print("                              Skips already-indexed files unless --force is used")
+    print("  init-manifest <path>        Mark files as indexed without re-processing")
+    print("                              Use for files already in the database")
     print("  query <file>                Search for a match in database")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
@@ -693,6 +747,7 @@ def print_help():
     print("  clear                       Clear entire database (with confirmation)")
     print("\nExamples:")
     print("  python3 panako.py verify")
+    print("  python3 panako.py init-manifest ~/Data/Vangelis/ref  # Mark existing as indexed")
     print("  python3 panako.py store ~/Music")
     print("  python3 panako.py store --force ~/Music   # Re-index all files")
     print("  python3 panako.py query ~/unknown_song.wav")
@@ -746,6 +801,13 @@ def main():
         force = '--force' in sys.argv
         path_arg = [arg for arg in sys.argv[2:] if arg != '--force'][0]
         panako.store(path_arg, force=force)
+
+    elif command == 'init-manifest':
+        if len(sys.argv) < 3:
+            print("Error: Provide path to mark as indexed", file=sys.stderr)
+            print("Usage: python3 panako.py init-manifest <file_or_directory>", file=sys.stderr)
+            sys.exit(1)
+        panako.init_manifest(sys.argv[2])
 
     elif command == 'query':
         if len(sys.argv) < 3:
