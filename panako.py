@@ -135,8 +135,7 @@ class Panako:
                 else:
                     errors.append("  Install: sudo apt install openjdk-17-jdk")
             else:
-                # Check Java version
-                version_output = result.stdout
+                # Check Java version (version_output already set from stderr above)
                 if '17' not in version_output and 'version "17' not in version_output:
                     warnings.append("Java 17 is recommended. Current Java:")
                     warnings.append(f"  {version_output.split()[0] if version_output else 'unknown'}")
