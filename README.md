@@ -21,6 +21,7 @@ The original Panako requires complex Java commands with multiple flags. This wra
 - ✅ Auto-configures library paths
 - ✅ Simplifies batch operations
 - ✅ Automatic duplicate detection (skips already-indexed files)
+- ✅ Deep query mode for long recordings (segments audio to find partial matches)
 
 ## Installation
 
@@ -360,6 +361,32 @@ python3 panako.py query /path/to/query.wav
 python3 panako.py batch /path/to/queries
 ```
 
+#### Deep Query (for long audio files)
+
+For long recordings that may contain multiple tracks or partial matches, use `deep-query` to segment the audio and find all matching content:
+
+```bash
+# Basic deep query (15-second segments with 2-second overlap)
+python3 panako.py deep-query /path/to/long_recording.wav
+
+# Custom segment length and overlap
+python3 panako.py deep-query --segment 20 --overlap 5 /path/to/recording.wav
+
+# Only report files matching at least 3 segments
+python3 panako.py deep-query --min-segments 3 /path/to/recording.wav
+
+# Show per-segment match details
+python3 panako.py deep-query --details /path/to/recording.wav
+```
+
+**Options:**
+- `--segment <seconds>` - Length of each segment (default: 15)
+- `--overlap <seconds>` - Overlap between segments (default: 2)
+- `--min-segments <n>` - Minimum segments to match (default: 1)
+- `--details` - Show which file matched each segment
+
+See [Deep Query](#deep-query) for detailed documentation.
+
 #### Database Management
 ```bash
 # Show database statistics
@@ -648,6 +675,106 @@ The manifest is stored at `~/.panako/indexed_files.txt`. It's a simple text file
 - Clear it manually: `rm ~/.panako/indexed_files.txt`
 
 > **Note:** The `clear` command automatically deletes the manifest along with the database.
+
+## Deep Query
+
+The `deep-query` command is designed for matching long audio recordings (e.g., from videocassettes, analog tapes, or DJ mixes) against your database. It segments the audio into overlapping chunks and queries each segment independently, then consolidates the results.
+
+### When to Use Deep Query
+
+- **Long recordings** - Query files that are several minutes or hours long
+- **Mixed content** - Recordings that contain multiple tracks, dialog, or sound effects
+- **Partial matches** - When only portions of the query might match database entries
+- **Videocassette/tape archives** - Audio extracted from video sources with edits and transitions
+
+### How It Works
+
+1. **Segmentation** - The audio file is split into overlapping segments (default: 15 seconds with 2-second overlap)
+2. **Individual queries** - Each segment is queried against the database
+3. **Consolidation** - Results are grouped by matched file, counting how many segments matched
+4. **Ranking** - Files are ranked by number of matching segments (more segments = higher confidence)
+
+### Example Output
+
+```
+================================================================================
+Deep Query: videocassette_side_a.wav
+Duration: 45:32 | Segment: 15s | Overlap: 2s
+================================================================================
+
+Segmenting audio... created 210 segments
+
+Querying segments:
+  [1/210] 0:00-0:15... ✓ 1 match(es)
+  [2/210] 0:13-0:28... ✓ 1 match(es)
+  ...
+
+================================================================================
+RESULTS: 5 file(s) matched (min 1 segment(s))
+================================================================================
+
+1. Vangelis-Chariots_of_Fire.wav
+   Path: /Users/sufian/Data/Vangelis/ref/1981-Chariots/track01.wav
+   Segments: 18/210 (8.6%)
+   Total score: 4523 fingerprints
+   Matched at: 2:15-6:45
+
+2. Vangelis-Blade_Runner_Blues.wav
+   Path: /Users/sufian/Data/Vangelis/ref/1982-Blade_Runner/track05.wav
+   Segments: 12/210 (5.7%)
+   Total score: 2891 fingerprints
+   Matched at: 15:30-18:45, 32:00-34:30
+```
+
+### Command Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--segment <seconds>` | 15 | Length of each audio segment |
+| `--overlap <seconds>` | 2 | Overlap between consecutive segments |
+| `--min-segments <n>` | 1 | Minimum segments required to report a match |
+| `--details` | off | Show which database file matched each segment |
+
+### Choosing Parameters
+
+**Segment Length (`--segment`)**
+- **Shorter (10-15s)**: Better for finding short clips, more segments to process
+- **Longer (20-30s)**: Faster processing, may miss short matches
+- Recommendation: Start with 15s, adjust based on your content
+
+**Overlap (`--overlap`)**
+- Prevents missing matches that span segment boundaries
+- 2-5 seconds is usually sufficient
+- Higher overlap = more segments = slower but more thorough
+
+**Minimum Segments (`--min-segments`)**
+- Filter out weak/accidental matches
+- Use `--min-segments 2` or higher to reduce false positives
+- Use `1` (default) when you want to catch every possible match
+
+### Python API
+
+```python
+from panako import Panako
+
+panako = Panako()
+
+# Basic deep query
+results = panako.deep_query("/path/to/long_recording.wav")
+
+# With custom parameters
+results = panako.deep_query(
+    "/path/to/recording.wav",
+    segment_length=20,
+    overlap=5,
+    min_segments=2,
+    show_details=True
+)
+
+# Process results
+for match in results:
+    print(f"{match['path']}: {match['segment_count']}/{match['total_segments']} segments")
+```
 
 ## Troubleshooting
 

@@ -5,8 +5,11 @@ Handles all Java configuration and provides clean Python interface
 """
 
 import os
+import re
 import subprocess
 import sys
+import tempfile
+from collections import defaultdict
 from pathlib import Path
 
 # Check Python version at import time
@@ -579,6 +582,266 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             print(f"[{i}/{len(audio_files)}] ", end="")
             self.query(audio_file, show_output=True)
 
+    def _get_audio_duration(self, audio_file):
+        """Get duration of audio file in seconds using ffprobe"""
+        try:
+            result = subprocess.run([
+                'ffprobe', '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                str(audio_file)
+            ], capture_output=True, text=True, timeout=30)
+            if result.returncode == 0 and result.stdout.strip():
+                return float(result.stdout.strip())
+        except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+            pass
+        return None
+
+    def _segment_audio(self, audio_file, segment_length, overlap, temp_dir):
+        """
+        Segment audio file into overlapping chunks using ffmpeg.
+
+        Returns list of (segment_path, start_time, end_time) tuples.
+        """
+        duration = self._get_audio_duration(audio_file)
+        if duration is None:
+            print(f"Warning: Could not determine duration of {audio_file}", file=sys.stderr)
+            return []
+
+        segments = []
+        step = segment_length - overlap
+        start = 0.0
+        segment_num = 0
+
+        while start < duration:
+            end = min(start + segment_length, duration)
+            # Skip very short final segments (less than 3 seconds)
+            if end - start < 3:
+                break
+
+            segment_path = Path(temp_dir) / f"segment_{segment_num:04d}.wav"
+
+            # Use ffmpeg to extract segment
+            try:
+                result = subprocess.run([
+                    'ffmpeg', '-y', '-v', 'error',
+                    '-i', str(audio_file),
+                    '-ss', str(start),
+                    '-t', str(segment_length),
+                    '-ar', '16000',  # Resample to 16kHz (Panako's default)
+                    '-ac', '1',      # Mono
+                    str(segment_path)
+                ], capture_output=True, text=True, timeout=60)
+
+                if result.returncode == 0 and segment_path.exists():
+                    segments.append((segment_path, start, end))
+                    segment_num += 1
+            except subprocess.TimeoutExpired:
+                print(f"Warning: Timeout creating segment at {start}s", file=sys.stderr)
+
+            start += step
+
+        return segments
+
+    def _parse_query_output(self, output):
+        """
+        Parse Panako query output to extract match information.
+
+        Returns list of dicts with match details.
+        """
+        matches = []
+        if not output:
+            return matches
+
+        # Panako output format varies, but typically includes:
+        # - File path of match
+        # - Match score/fingerprints
+        # - Time offsets
+        # Look for lines that contain file paths and match info
+
+        lines = output.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Skip header lines
+            if line.startswith('Query') or line.startswith('=') or line.startswith('-'):
+                continue
+
+            # Try to extract match info - look for file paths
+            # Common patterns: path with score, or tab-separated values
+            match_info = {}
+
+            # Look for file path (contains / and ends with audio extension)
+            path_match = re.search(r'(/[^\s]+\.(?:wav|mp3|flac|ogg|m4a|aac|wma))', line, re.IGNORECASE)
+            if path_match:
+                match_info['path'] = path_match.group(1)
+
+                # Try to extract score (number of fingerprints)
+                score_match = re.search(r'(\d+)\s*(?:fingerprints?|fp|matches?|hits?)', line, re.IGNORECASE)
+                if score_match:
+                    match_info['score'] = int(score_match.group(1))
+                else:
+                    # Look for standalone numbers that might be scores
+                    numbers = re.findall(r'\b(\d+)\b', line)
+                    if numbers:
+                        match_info['score'] = int(numbers[0])
+                    else:
+                        match_info['score'] = 1  # Default score
+
+                matches.append(match_info)
+
+        return matches
+
+    def deep_query(self, query_file, segment_length=15, overlap=2, min_segments=1, show_details=False):
+        """
+        Query database by segmenting a long audio file into overlapping chunks.
+
+        This is useful for finding partial matches when the query file is long
+        and may only partially match files in the database.
+
+        Args:
+            query_file: Path to query audio file
+            segment_length: Length of each segment in seconds (default: 15)
+            overlap: Overlap between segments in seconds (default: 2)
+            min_segments: Minimum segment matches to report a file (default: 1)
+            show_details: If True, show per-segment match details
+
+        Returns:
+            Dict of results with match statistics
+        """
+        # Expand ~ in paths
+        query_file = Path(os.path.expanduser(str(query_file))).resolve()
+
+        if not query_file.exists():
+            print(f"Error: Query file not found: {query_file}", file=sys.stderr)
+            return None
+
+        # Check ffmpeg/ffprobe availability
+        try:
+            subprocess.run(['ffprobe', '-version'], capture_output=True, timeout=5)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            print("Error: ffprobe not found. Install ffmpeg for deep-query support.", file=sys.stderr)
+            return None
+
+        duration = self._get_audio_duration(query_file)
+        if duration is None:
+            print(f"Error: Could not determine audio duration", file=sys.stderr)
+            return None
+
+        # Format duration for display
+        dur_min = int(duration // 60)
+        dur_sec = int(duration % 60)
+
+        print(f"\n{'='*80}")
+        print(f"Deep Query: {query_file.name}")
+        print(f"Duration: {dur_min}:{dur_sec:02d} | Segment: {segment_length}s | Overlap: {overlap}s")
+        print(f"{'='*80}\n")
+
+        # Create temp directory for segments
+        with tempfile.TemporaryDirectory(prefix='panako_deep_') as temp_dir:
+            # Segment the audio
+            print("Segmenting audio...", end=" ", flush=True)
+            segments = self._segment_audio(query_file, segment_length, overlap, temp_dir)
+            print(f"created {len(segments)} segments")
+
+            if not segments:
+                print("Error: No segments created", file=sys.stderr)
+                return None
+
+            # Query each segment and collect results
+            all_matches = defaultdict(lambda: {'count': 0, 'segments': [], 'total_score': 0})
+
+            print(f"\nQuerying segments:")
+            for i, (seg_path, start_time, end_time) in enumerate(segments, 1):
+                start_fmt = f"{int(start_time//60)}:{int(start_time%60):02d}"
+                end_fmt = f"{int(end_time//60)}:{int(end_time%60):02d}"
+
+                print(f"  [{i}/{len(segments)}] {start_fmt}-{end_fmt}...", end=" ", flush=True)
+
+                # Run query
+                result = self._run_command('query', str(seg_path), capture_output=True)
+
+                if result and result.stdout:
+                    matches = self._parse_query_output(result.stdout)
+                    if matches:
+                        print(f"✓ {len(matches)} match(es)")
+                        for match in matches:
+                            path = match.get('path', 'unknown')
+                            score = match.get('score', 1)
+                            all_matches[path]['count'] += 1
+                            all_matches[path]['total_score'] += score
+                            all_matches[path]['segments'].append({
+                                'start': start_time,
+                                'end': end_time,
+                                'score': score
+                            })
+                        if show_details:
+                            for match in matches:
+                                print(f"       → {Path(match.get('path', 'unknown')).name}")
+                    else:
+                        print("○ no match")
+                else:
+                    print("○ no match")
+
+            # Filter and sort results
+            results = []
+            for path, data in all_matches.items():
+                if data['count'] >= min_segments:
+                    # Calculate time ranges from segments
+                    segments_list = sorted(data['segments'], key=lambda x: x['start'])
+
+                    # Merge overlapping/adjacent time ranges
+                    time_ranges = []
+                    for seg in segments_list:
+                        if time_ranges and seg['start'] <= time_ranges[-1][1] + overlap:
+                            # Extend previous range
+                            time_ranges[-1] = (time_ranges[-1][0], max(time_ranges[-1][1], seg['end']))
+                        else:
+                            time_ranges.append((seg['start'], seg['end']))
+
+                    results.append({
+                        'path': path,
+                        'segment_count': data['count'],
+                        'total_segments': len(segments),
+                        'percentage': (data['count'] / len(segments)) * 100,
+                        'total_score': data['total_score'],
+                        'time_ranges': time_ranges
+                    })
+
+            # Sort by segment count (descending), then by total score
+            results.sort(key=lambda x: (x['segment_count'], x['total_score']), reverse=True)
+
+            # Print results
+            print(f"\n{'='*80}")
+            print(f"RESULTS: {len(results)} file(s) matched (min {min_segments} segment(s))")
+            print(f"{'='*80}\n")
+
+            if not results:
+                print("No matches found meeting the minimum segment threshold.")
+                print(f"Try lowering --min-segments (currently {min_segments})")
+            else:
+                for rank, r in enumerate(results, 1):
+                    path = Path(r['path'])
+                    print(f"{rank}. {path.name}")
+                    print(f"   Path: {r['path']}")
+                    print(f"   Segments: {r['segment_count']}/{r['total_segments']} ({r['percentage']:.1f}%)")
+                    print(f"   Total score: {r['total_score']} fingerprints")
+
+                    # Format time ranges
+                    range_strs = []
+                    for start, end in r['time_ranges']:
+                        start_fmt = f"{int(start//60)}:{int(start%60):02d}"
+                        end_fmt = f"{int(end//60)}:{int(end%60):02d}"
+                        range_strs.append(f"{start_fmt}-{end_fmt}")
+                    print(f"   Matched at: {', '.join(range_strs)}")
+                    print()
+
+            print(f"{'='*80}\n")
+
+            return results
+
     def verify_setup(self):
         """Verify that Panako is properly configured"""
         print("\n" + "="*80)
@@ -739,17 +1002,25 @@ def print_help():
     print("  init-manifest <path>        Mark files as indexed without re-processing")
     print("                              Use for files already in the database")
     print("  query <file>                Search for a match in database")
+    print("  deep-query [options] <file> Segment long audio and find partial matches")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
     print("  list                        List all fingerprints in database")
     print("  delete <path>               Remove file(s) from database")
     print("  clear                       Clear entire database (with confirmation)")
+    print("\nDeep Query Options:")
+    print("  --segment <seconds>         Segment length (default: 15)")
+    print("  --overlap <seconds>         Overlap between segments (default: 2)")
+    print("  --min-segments <n>          Minimum segments to match (default: 1)")
+    print("  --details                   Show per-segment match details")
     print("\nExamples:")
     print("  python3 panako.py verify")
     print("  python3 panako.py init-manifest ~/Data/Vangelis/ref  # Mark existing as indexed")
     print("  python3 panako.py store ~/Music")
     print("  python3 panako.py store --force ~/Music   # Re-index all files")
     print("  python3 panako.py query ~/unknown_song.wav")
+    print("  python3 panako.py deep-query ~/long_recording.wav")
+    print("  python3 panako.py deep-query --segment 20 --overlap 5 ~/recording.wav")
     print("  python3 panako.py batch ~/test_files")
     print("  python3 panako.py stats")
     print("\nSupported formats: WAV, MP3, FLAC, OGG, M4A, AAC, WMA")
@@ -814,6 +1085,54 @@ def main():
             print("Usage: python3 panako.py query <query_file>", file=sys.stderr)
             sys.exit(1)
         panako.query(sys.argv[2])
+
+    elif command == 'deep-query':
+        if len(sys.argv) < 3:
+            print("Error: Provide query file", file=sys.stderr)
+            print("Usage: python3 panako.py deep-query [options] <query_file>", file=sys.stderr)
+            sys.exit(1)
+
+        # Parse options
+        segment_length = 15
+        overlap = 2
+        min_segments = 1
+        show_details = False
+        query_file = None
+
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg == '--segment' and i + 1 < len(args):
+                segment_length = int(args[i + 1])
+                i += 2
+            elif arg == '--overlap' and i + 1 < len(args):
+                overlap = int(args[i + 1])
+                i += 2
+            elif arg == '--min-segments' and i + 1 < len(args):
+                min_segments = int(args[i + 1])
+                i += 2
+            elif arg == '--details':
+                show_details = True
+                i += 1
+            elif not arg.startswith('--'):
+                query_file = arg
+                i += 1
+            else:
+                print(f"Unknown option: {arg}", file=sys.stderr)
+                sys.exit(1)
+
+        if not query_file:
+            print("Error: Provide query file", file=sys.stderr)
+            sys.exit(1)
+
+        panako.deep_query(
+            query_file,
+            segment_length=segment_length,
+            overlap=overlap,
+            min_segments=min_segments,
+            show_details=show_details
+        )
 
     elif command == 'delete':
         if len(sys.argv) < 3:
