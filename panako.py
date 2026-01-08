@@ -647,17 +647,14 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         """
         Parse Panako query output to extract match information.
 
+        Panako output format (semicolon-separated):
+        Index; Total; Query path; Query start; Query stop; Match path; Match id; Match start; Match stop; Score; Time factor; Freq factor; Match %
+
         Returns list of dicts with match details.
         """
         matches = []
         if not output:
             return matches
-
-        # Panako output format varies, but typically includes:
-        # - File path of match
-        # - Match score/fingerprints
-        # - Time offsets
-        # Look for lines that contain file paths and match info
 
         lines = output.strip().split('\n')
         for line in lines:
@@ -665,32 +662,34 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             if not line:
                 continue
 
-            # Skip header lines
-            if line.startswith('Query') or line.startswith('=') or line.startswith('-'):
+            # Skip non-data lines (headers, info messages)
+            if not line[0].isdigit():
                 continue
 
-            # Try to extract match info - look for file paths
-            # Common patterns: path with score, or tab-separated values
-            match_info = {}
+            # Parse semicolon-separated format
+            parts = [p.strip() for p in line.split(';')]
+            if len(parts) >= 10:
+                try:
+                    query_path = parts[2]
+                    match_path = parts[5]
+                    match_score = int(parts[9])
 
-            # Look for file path (contains / and ends with audio extension)
-            path_match = re.search(r'(/[^\s]+\.(?:wav|mp3|flac|ogg|m4a|aac|wma))', line, re.IGNORECASE)
-            if path_match:
-                match_info['path'] = path_match.group(1)
+                    # Skip self-matches (query matching itself)
+                    if query_path == match_path:
+                        continue
 
-                # Try to extract score (number of fingerprints)
-                score_match = re.search(r'(\d+)\s*(?:fingerprints?|fp|matches?|hits?)', line, re.IGNORECASE)
-                if score_match:
-                    match_info['score'] = int(score_match.group(1))
-                else:
-                    # Look for standalone numbers that might be scores
-                    numbers = re.findall(r'\b(\d+)\b', line)
-                    if numbers:
-                        match_info['score'] = int(numbers[0])
-                    else:
-                        match_info['score'] = 1  # Default score
+                    # Skip if match_path is a temp segment file
+                    if '/panako_deep_' in match_path or 'segment_' in match_path:
+                        continue
 
-                matches.append(match_info)
+                    matches.append({
+                        'path': match_path,
+                        'score': match_score,
+                        'match_start': float(parts[7]) if parts[7] else 0,
+                        'match_stop': float(parts[8]) if parts[8] else 0
+                    })
+                except (ValueError, IndexError):
+                    continue
 
         return matches
 
