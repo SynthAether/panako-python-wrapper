@@ -725,14 +725,14 @@ Querying segments:
 RESULTS: 5 file(s) matched (min 1 segment(s))
 ================================================================================
 
-1. MyArtist-Chariots_of_Fire.wav
-   Path: /Users/user01/Data/MyArtist/ref/1981-Chariots/track01.wav
+1. MyArtist-Sky_on_Fire.wav
+   Path: /Users/user01/Data/MyArtist/ref/1981/track01.wav
    Segments: 18/210 (8.6%)
    Total score: 4523 fingerprints
    Matched at: 2:15-6:45
 
-2. MyArtist-Blade_Runner_Blues.wav
-   Path: /Users/user01/Data/MyArtist/ref/1982-Blade_Runner/track05.wav
+2. MyArtist-Blues.wav
+   Path: /Users/user01/Data/MyArtist/ref/1982/track05.wav
    Segments: 12/210 (5.7%)
    Total score: 2891 fingerprints
    Matched at: 15:30-18:45, 32:00-34:30
