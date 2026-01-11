@@ -22,6 +22,7 @@ The original Panako requires complex Java commands with multiple flags. This wra
 - ✅ Simplifies batch operations
 - ✅ Automatic duplicate detection (skips already-indexed files)
 - ✅ Deep query mode for long recordings (segments audio to find partial matches)
+- ✅ Real-time monitoring via microphone for live audio identification
 
 ## Installation
 
@@ -386,6 +387,20 @@ python3 panako.py deep-query --details /path/to/recording.wav
 - `--details` - Show which file matched each segment
 
 See [Deep Query](#deep-query) for detailed documentation.
+
+#### Real-time Monitoring
+
+For live audio identification using your microphone or an audio stream:
+
+```bash
+# Monitor using system microphone (default)
+python3 panako.py monitor
+
+# Monitor an audio file/stream
+python3 panako.py monitor /path/to/audio_stream.wav
+```
+
+See [Real-time Monitoring](#real-time-monitoring) for detailed documentation.
 
 #### Database Management
 ```bash
@@ -787,6 +802,86 @@ results = panako.deep_query(
 for match in results:
     print(f"{match['path']}: {match['segment_count']}/{match['total_segments']} segments")
 ```
+
+## Real-time Monitoring
+
+The `monitor` command enables real-time audio identification by continuously listening to audio input and reporting matches as they are detected. This is useful for broadcast monitoring, live event tracking, or identifying music playing in a physical space.
+
+### When to Use Monitor
+
+- **Broadcast monitoring** - Track what music plays on radio or TV
+- **Live event tracking** - Identify songs at concerts or venues
+- **Studio monitoring** - Identify tracks playing from tape archives or turntables
+- **Copyright detection** - Real-time monitoring of streams for licensed content
+
+### How It Works
+
+1. **Audio capture** - Panako listens to the system microphone (or a provided audio file/stream)
+2. **Continuous fingerprinting** - Audio is fingerprinted in ~25-second chunks with 5-second overlap
+3. **Real-time matching** - Each chunk is matched against the database
+4. **Live reporting** - Matches are reported to the console as they are detected
+
+### Usage
+
+```bash
+# Monitor from system microphone (default)
+python3 panako.py monitor
+
+# Monitor an audio file (processes it as a continuous stream)
+python3 panako.py monitor /path/to/audio_stream.wav
+```
+
+Press `Ctrl+C` to stop monitoring.
+
+### Example Output
+
+```
+================================================================================
+Real-time Audio Monitor
+================================================================================
+
+Source: System microphone (default audio input)
+
+Note: On macOS, grant microphone access to Terminal if prompted.
+
+Listening for matches... (Press Ctrl+C to stop)
+
+--------------------------------------------------------------------------------
+1;1;query;0.00;25.00;/path/to/music/song.wav;123;45.20;70.20;542;1.000;1.000
+1;1;query;20.00;45.00;/path/to/music/another_song.wav;456;0.00;25.00;389;1.000;1.000
+...
+```
+
+### Platform Notes
+
+| Platform | Notes |
+|----------|-------|
+| **macOS** | May need to grant microphone permission to Terminal/iTerm (System Settings → Privacy → Microphone) |
+| **Linux** | Requires working PulseAudio or ALSA setup. Usually works out of the box. |
+| **Windows (WSL)** | Audio passthrough to WSL can be complex. Native microphone access may require additional configuration. |
+
+### Python API
+
+```python
+from panako import Panako
+
+panako = Panako()
+
+# Monitor from microphone (runs until Ctrl+C)
+panako.monitor()
+
+# Monitor from an audio file/stream
+panako.monitor("/path/to/audio_stream.wav")
+```
+
+### Monitor vs Query vs Deep Query
+
+| Feature | `query` | `deep-query` | `monitor` |
+|---------|---------|--------------|-----------|
+| Input | Audio file | Audio file | Microphone or stream |
+| Duration | One-shot | One-shot | Continuous |
+| Use case | Identify a file | Find partial matches | Real-time identification |
+| Output | Final results | Consolidated summary | Live matches |
 
 ## Troubleshooting
 

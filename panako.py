@@ -504,6 +504,50 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         print("="*80 + "\n")
         self._run_command('stats')
 
+    def monitor(self, audio_source=None):
+        """
+        Monitor audio in real-time for fingerprint matches.
+
+        This command continuously listens to audio input and reports matches
+        as they are detected. Useful for broadcast monitoring, live event
+        tracking, or identifying music playing in a physical space.
+
+        Args:
+            audio_source: Optional path to audio file or stream.
+                         If not provided, uses the system's default microphone.
+
+        Note:
+            - On macOS, you may need to grant microphone permission to Terminal/iTerm
+            - On Linux, requires working PulseAudio/ALSA setup
+            - Press Ctrl+C to stop monitoring
+        """
+        print(f"\n{'='*80}")
+        print("Real-time Audio Monitor")
+        print(f"{'='*80}\n")
+
+        if audio_source:
+            # Expand ~ in paths
+            audio_source = Path(os.path.expanduser(str(audio_source))).resolve()
+            if not audio_source.exists():
+                print(f"Error: Audio source not found: {audio_source}", file=sys.stderr)
+                return
+            print(f"Source: {audio_source}")
+        else:
+            print("Source: System microphone (default audio input)")
+            print("\nNote: On macOS, grant microphone access to Terminal if prompted.")
+
+        print("\nListening for matches... (Press Ctrl+C to stop)\n")
+        print("-" * 80)
+
+        try:
+            if audio_source:
+                self._run_command('monitor', str(audio_source))
+            else:
+                self._run_command('monitor')
+        except KeyboardInterrupt:
+            print("\n" + "-" * 80)
+            print("\nMonitoring stopped.")
+
     def init_manifest(self, path):
         """
         Mark audio files as already indexed (without re-processing them).
@@ -1030,6 +1074,7 @@ def print_help():
     print("                              Use for files already in the database")
     print("  query <file>                Search for a match in database")
     print("  deep-query [options] <file> Segment long audio and find partial matches")
+    print("  monitor [file]              Real-time audio monitoring (uses microphone if no file)")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
     print("  list                        List all fingerprints in database")
@@ -1048,6 +1093,8 @@ def print_help():
     print("  python3 panako.py query ~/unknown_song.wav")
     print("  python3 panako.py deep-query ~/long_recording.wav")
     print("  python3 panako.py deep-query --segment 20 --overlap 5 ~/recording.wav")
+    print("  python3 panako.py monitor                 # Listen via microphone")
+    print("  python3 panako.py monitor ~/stream.wav    # Monitor an audio file")
     print("  python3 panako.py batch ~/test_files")
     print("  python3 panako.py stats")
     print("\nSupported formats: WAV, MP3, FLAC, OGG, M4A, AAC, WMA")
@@ -1183,6 +1230,11 @@ def main():
 
     elif command == 'list':
         panako.list_cache_files()
+
+    elif command == 'monitor':
+        # Monitor can optionally take an audio source
+        audio_source = sys.argv[2] if len(sys.argv) > 2 else None
+        panako.monitor(audio_source)
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
