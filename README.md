@@ -1000,6 +1000,9 @@ python3 panako.py expand --report results.txt ./found/comet/segment04/
 | `--overlap <seconds>` | 2 | Overlap between consecutive segments |
 | `--min-segments <n>` | 1 | Minimum segments required to report a match |
 | `--report <file>` | none | Save results to a text file |
+| `--include-seeds` | off | Include matches from seed folder in results |
+
+**Note:** By default, files already in the seed folder are excluded from results. Use `--include-seeds` to see all matches including those from the seed folder itself.
 
 ### Example Workflow
 
@@ -1085,7 +1088,8 @@ results = panako.expand(
     overlap=5,
     min_segments=1,
     threshold=15,
-    report_file="results.txt"
+    report_file="results.txt",
+    include_seeds=False  # Set True to include matches from seed folder
 )
 
 # Process results
