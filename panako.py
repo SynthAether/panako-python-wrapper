@@ -38,7 +38,21 @@ class Panako:
             defer_build: If True, don't build Java command (for verify command)
         """
         if panako_dir is None:
-            panako_dir = os.environ.get('PANAKO_DIR', os.path.expanduser('~/Panako'))
+            # Check environment variable first
+            panako_dir = os.environ.get('PANAKO_DIR')
+            if panako_dir is None:
+                # Check default locations in order of preference
+                default_locations = [
+                    Path.home() / ".panako" / "Panako",  # pip install default
+                    Path.home() / "Panako",              # legacy default
+                ]
+                for loc in default_locations:
+                    if (loc / "build" / "libs").exists():
+                        panako_dir = str(loc)
+                        break
+                if panako_dir is None:
+                    # Fall back to pip install location (will be created by setup)
+                    panako_dir = str(Path.home() / ".panako" / "Panako")
         else:
             # Expand ~ in user-provided paths
             panako_dir = os.path.expanduser(panako_dir)
@@ -1105,12 +1119,226 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         return all_good
 
 
+def run_setup(force=False):
+    """
+    Set up Panako by installing dependencies and building the Java backend.
+
+    This command:
+    1. Checks for required system dependencies (Java, LMDB, ffmpeg)
+    2. Clones Panako from GitHub if not present
+    3. Builds Panako with Gradle
+
+    Args:
+        force: If True, re-clone and rebuild even if Panako exists
+    """
+    platform = sys.platform
+    panako_install_dir = Path.home() / ".panako" / "Panako"
+
+    print("\n" + "="*80)
+    print("Panako Setup")
+    print("="*80 + "\n")
+
+    # Detect architecture for macOS
+    arch = None
+    if platform == 'darwin':
+        try:
+            result = subprocess.run(['uname', '-m'], capture_output=True, text=True)
+            arch = result.stdout.strip()
+            print(f"Platform: macOS ({arch})")
+        except:
+            print("Platform: macOS")
+    elif platform == 'linux':
+        print("Platform: Linux")
+    else:
+        print(f"Platform: {platform}")
+    print()
+
+    # Check dependencies
+    print("Checking dependencies...\n")
+    missing_deps = []
+    install_commands = []
+
+    # Check Java
+    java_ok = False
+    try:
+        result = subprocess.run(['java', '-version'], capture_output=True, text=True, timeout=5)
+        version_output = result.stderr if result.stderr else result.stdout
+        if result.returncode == 0:
+            java_version = version_output.split('\n')[0] if version_output else "Unknown"
+            print(f"  ✓ Java: {java_version}")
+            java_ok = True
+        else:
+            print("  ✗ Java: not working")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print("  ✗ Java: not found")
+
+    if not java_ok:
+        missing_deps.append("Java 17+")
+        if platform == 'darwin':
+            install_commands.append("brew install openjdk@17")
+            install_commands.append('echo \'export PATH="/opt/homebrew/opt/openjdk@17/bin:$PATH"\' >> ~/.zshrc')
+            install_commands.append("source ~/.zshrc")
+        else:
+            install_commands.append("sudo apt install openjdk-17-jdk")
+
+    # Check LMDB
+    lmdb_ok = False
+    if platform == 'darwin':
+        lmdb_paths = ['/opt/homebrew/lib/liblmdb.dylib', '/usr/local/lib/liblmdb.dylib']
+    else:
+        lmdb_paths = ['/usr/lib/liblmdb.so', '/usr/lib/x86_64-linux-gnu/liblmdb.so',
+                      '/usr/lib/aarch64-linux-gnu/liblmdb.so', '/usr/local/lib/liblmdb.so']
+
+    lmdb_location = next((p for p in lmdb_paths if os.path.exists(p)), None)
+    if lmdb_location:
+        print(f"  ✓ LMDB: {lmdb_location}")
+        lmdb_ok = True
+    else:
+        print("  ✗ LMDB: not found")
+        missing_deps.append("LMDB")
+        if platform == 'darwin':
+            install_commands.append("brew install lmdb")
+        else:
+            install_commands.append("sudo apt install liblmdb-dev")
+
+    # Check ffmpeg (optional but recommended)
+    ffmpeg_ok = False
+    try:
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            print("  ✓ ffmpeg: installed")
+            ffmpeg_ok = True
+        else:
+            print("  ⚠ ffmpeg: not working (optional, needed for MP3/FLAC)")
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        print("  ⚠ ffmpeg: not found (optional, needed for MP3/FLAC)")
+
+    if not ffmpeg_ok:
+        if platform == 'darwin':
+            install_commands.append("brew install ffmpeg  # optional, for MP3/FLAC support")
+        else:
+            install_commands.append("sudo apt install ffmpeg  # optional, for MP3/FLAC support")
+
+    print()
+
+    # If missing required dependencies, show install instructions and exit
+    if missing_deps:
+        print("="*80)
+        print("Missing required dependencies:", ", ".join(missing_deps))
+        print("="*80 + "\n")
+        print("Install them with:\n")
+        for cmd in install_commands:
+            print(f"  {cmd}")
+        print("\nThen run 'panako setup' again.")
+        print()
+        return False
+
+    # Check if Panako is already installed
+    jar_files = list((panako_install_dir / "build" / "libs").glob("panako-*-all.jar")) if (panako_install_dir / "build" / "libs").exists() else []
+
+    if jar_files and not force:
+        print("="*80)
+        print("Panako is already installed!")
+        print("="*80 + "\n")
+        print(f"  Location: {panako_install_dir}")
+        print(f"  JAR: {jar_files[0].name}")
+        print("\n  Use 'panako setup --force' to reinstall.")
+        print("\n  Ready to use:")
+        print("    panako store ~/Music")
+        print("    panako query ~/song.wav")
+        print()
+        return True
+
+    # Clone Panako
+    print("="*80)
+    print("Installing Panako")
+    print("="*80 + "\n")
+
+    # Ensure parent directory exists
+    panako_install_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    if panako_install_dir.exists():
+        if force:
+            print(f"Removing existing installation at {panako_install_dir}...")
+            shutil.rmtree(panako_install_dir)
+        else:
+            print(f"Directory exists but no JAR found. Rebuilding...")
+
+    if not panako_install_dir.exists():
+        print("Cloning Panako from GitHub...")
+        print(f"  git clone https://github.com/JorenSix/Panako.git {panako_install_dir}\n")
+
+        try:
+            result = subprocess.run(
+                ['git', 'clone', 'https://github.com/JorenSix/Panako.git', str(panako_install_dir)],
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout for clone
+            )
+            if result.returncode != 0:
+                print(f"Error cloning Panako: {result.stderr}", file=sys.stderr)
+                return False
+            print("  ✓ Clone complete\n")
+        except subprocess.TimeoutExpired:
+            print("Error: Clone timed out", file=sys.stderr)
+            return False
+        except FileNotFoundError:
+            print("Error: git not found. Please install git first.", file=sys.stderr)
+            return False
+
+    # Make gradlew executable
+    gradlew_path = panako_install_dir / "gradlew"
+    if gradlew_path.exists():
+        os.chmod(gradlew_path, 0o755)
+
+    # Build Panako
+    print("Building Panako (this takes 2-5 minutes on first run)...")
+    print(f"  cd {panako_install_dir} && ./gradlew shadowJar\n")
+
+    try:
+        result = subprocess.run(
+            ['./gradlew', 'shadowJar'],
+            cwd=str(panako_install_dir),
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minute timeout for build
+        )
+        if result.returncode != 0:
+            print(f"Error building Panako:", file=sys.stderr)
+            print(result.stderr, file=sys.stderr)
+            return False
+        print("  ✓ Build complete\n")
+    except subprocess.TimeoutExpired:
+        print("Error: Build timed out", file=sys.stderr)
+        return False
+
+    # Verify the JAR was created
+    jar_files = list((panako_install_dir / "build" / "libs").glob("panako-*-all.jar"))
+    if not jar_files:
+        print("Error: JAR file not found after build", file=sys.stderr)
+        return False
+
+    print("="*80)
+    print("✓ Setup complete!")
+    print("="*80 + "\n")
+    print(f"  Panako installed at: {panako_install_dir}")
+    print(f"  JAR: {jar_files[0].name}")
+    print("\n  Ready to use:")
+    print("    panako store ~/Music")
+    print("    panako query ~/song.wav")
+    print("    panako --help")
+    print()
+
+    return True
+
+
 def print_help():
     """Print detailed help message"""
     print("Panako Python Wrapper - Audio Fingerprinting")
     print("\nUsage:")
     print("  python3 panako.py <command> [arguments]")
     print("\nCommands:")
+    print("  setup [--force]             Download and build Panako (first-time setup)")
     print("  verify                      Check if Panako is properly installed")
     print("  store [--force] <path>      Add audio file(s) to database")
     print("                              Skips already-indexed files unless --force is used")
@@ -1155,6 +1383,12 @@ def main():
     if len(sys.argv) >= 2 and sys.argv[1].lower() in ['--help', '-h', 'help']:
         print_help()
         sys.exit(0)
+
+    # Special case: setup command doesn't need full initialization
+    if len(sys.argv) >= 2 and sys.argv[1].lower() == 'setup':
+        force = '--force' in sys.argv
+        success = run_setup(force=force)
+        sys.exit(0 if success else 1)
 
     # Special case: verify command doesn't need full initialization
     if len(sys.argv) >= 2 and sys.argv[1].lower() == 'verify':

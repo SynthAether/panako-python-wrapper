@@ -26,7 +26,42 @@ The original Panako requires complex Java commands with multiple flags. This wra
 
 ## Installation
 
-### Project Structure
+### Quick Install (Recommended)
+
+The easiest way to install is via pip:
+
+```bash
+# Install the wrapper
+pip install panako-python-wrapper
+
+# Install system dependencies (if not already installed)
+# macOS:
+brew install openjdk@17 lmdb ffmpeg
+
+# Ubuntu/Debian:
+sudo apt install openjdk-17-jdk liblmdb-dev ffmpeg
+
+# Run setup to download and build Panako
+panako setup
+
+# Verify installation
+panako verify
+
+# Start using!
+panako store ~/Music
+panako query ~/unknown_song.wav
+```
+
+The `setup` command automatically:
+- Checks for required dependencies (Java, LMDB)
+- Clones Panako from GitHub to `~/.panako/Panako/`
+- Builds Panako with Gradle (takes 2-5 minutes on first run)
+
+### Manual Installation
+
+If you prefer manual control or already have Panako installed, you can set it up manually.
+
+#### Project Structure
 
 This wrapper works alongside Panako as separate projects. We recommend creating a parent directory to hold both repositories:
 
@@ -591,6 +626,20 @@ panako stats
 ```
 
 ### Directory Structure Reference
+
+**After `pip install` + `panako setup`:**
+
+```
+~/.panako/                           # All Panako data (auto-created)
+├── Panako/                          # Java backend (installed by setup)
+│   └── build/libs/panako-*.jar
+├── indexed_files.txt                # Manifest tracking indexed files
+└── dbs/                             # Fingerprint storage
+    ├── olaf_cache/                  # Cached fingerprints (.tdb files)
+    └── olaf_db/                     # LMDB database (paths and index)
+```
+
+**After manual installation:**
 
 ```
 ~/audio-fingerprinting/              # Your chosen parent directory
