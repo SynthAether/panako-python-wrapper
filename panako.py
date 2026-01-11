@@ -511,6 +511,12 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             shutil.rmtree(cache_path)
             print("Cache cleared.")
 
+        # Clear the LMDB database (stores paths and fingerprint index)
+        db_path = Path.home() / ".panako" / "dbs" / "olaf_db"
+        if db_path.exists():
+            shutil.rmtree(db_path)
+            print("Database index cleared.")
+
         # Clear the manifest
         if self.MANIFEST_FILE.exists():
             self.MANIFEST_FILE.unlink()
