@@ -1133,7 +1133,7 @@ def print_help():
     print("  --details                   Show per-segment match details")
     print("\nExamples:")
     print("  python3 panako.py verify")
-    print("  python3 panako.py init-manifest ~/Data/Vangelis/ref  # Mark existing as indexed")
+    print("  python3 panako.py init-manifest ~/Data/MyArtist/ref  # Mark existing as indexed")
     print("  python3 panako.py store ~/Music")
     print("  python3 panako.py store --force ~/Music   # Re-index all files")
     print("  python3 panako.py query ~/unknown_song.wav")
