@@ -52,6 +52,7 @@ Issues = "https://github.com/SynthAether/panako-python-wrapper/issues"
 
 [project.scripts]
 panako = "panako:main"
+panako-py = "panako:main"
 
 [tool.setuptools]
 py-modules = ["panako"]
