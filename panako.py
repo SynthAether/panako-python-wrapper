@@ -508,42 +508,46 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         """
         Monitor audio in real-time for fingerprint matches.
 
-        This command continuously listens to audio input and reports matches
-        as they are detected. Useful for broadcast monitoring, live event
-        tracking, or identifying music playing in a physical space.
+        This command continuously processes audio and reports matches
+        as they are detected. Useful for monitoring long audio streams,
+        broadcast recordings, or simulating live monitoring scenarios.
 
         Args:
-            audio_source: Optional path to audio file or stream.
-                         If not provided, uses the system's default microphone.
+            audio_source: Path to audio file to monitor. Required.
+                         For live microphone input, first capture audio using:
+                         ffmpeg -f avfoundation -i ":0" -t 300 recording.wav (macOS)
+                         ffmpeg -f pulse -i default -t 300 recording.wav (Linux)
 
         Note:
-            - On macOS, you may need to grant microphone permission to Terminal/iTerm
-            - On Linux, requires working PulseAudio/ALSA setup
+            - Panako processes the file as a continuous stream
+            - Matches are reported in real-time as chunks are processed
             - Press Ctrl+C to stop monitoring
         """
+        if not audio_source:
+            print("Error: Audio source file is required for monitoring.", file=sys.stderr)
+            print("\nUsage: python3 panako.py monitor <audio_file>", file=sys.stderr)
+            print("\nFor live microphone capture, first record audio:", file=sys.stderr)
+            print("  macOS:  ffmpeg -f avfoundation -i \":0\" -t 300 recording.wav", file=sys.stderr)
+            print("  Linux:  ffmpeg -f pulse -i default -t 300 recording.wav", file=sys.stderr)
+            print("\nThen monitor the recording:", file=sys.stderr)
+            print("  python3 panako.py monitor recording.wav", file=sys.stderr)
+            return
+
+        # Expand ~ in paths
+        audio_source = Path(os.path.expanduser(str(audio_source))).resolve()
+        if not audio_source.exists():
+            print(f"Error: Audio source not found: {audio_source}", file=sys.stderr)
+            return
+
         print(f"\n{'='*80}")
         print("Real-time Audio Monitor")
         print(f"{'='*80}\n")
-
-        if audio_source:
-            # Expand ~ in paths
-            audio_source = Path(os.path.expanduser(str(audio_source))).resolve()
-            if not audio_source.exists():
-                print(f"Error: Audio source not found: {audio_source}", file=sys.stderr)
-                return
-            print(f"Source: {audio_source}")
-        else:
-            print("Source: System microphone (default audio input)")
-            print("\nNote: On macOS, grant microphone access to Terminal if prompted.")
-
-        print("\nListening for matches... (Press Ctrl+C to stop)\n")
+        print(f"Source: {audio_source}")
+        print("\nProcessing audio stream... (Press Ctrl+C to stop)\n")
         print("-" * 80)
 
         try:
-            if audio_source:
-                self._run_command('monitor', str(audio_source))
-            else:
-                self._run_command('monitor')
+            self._run_command('monitor', str(audio_source))
         except KeyboardInterrupt:
             print("\n" + "-" * 80)
             print("\nMonitoring stopped.")
@@ -1074,7 +1078,7 @@ def print_help():
     print("                              Use for files already in the database")
     print("  query <file>                Search for a match in database")
     print("  deep-query [options] <file> Segment long audio and find partial matches")
-    print("  monitor [file]              Real-time audio monitoring (uses microphone if no file)")
+    print("  monitor <file>              Real-time audio monitoring (processes file as stream)")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
     print("  list                        List all fingerprints in database")
@@ -1093,8 +1097,7 @@ def print_help():
     print("  python3 panako.py query ~/unknown_song.wav")
     print("  python3 panako.py deep-query ~/long_recording.wav")
     print("  python3 panako.py deep-query --segment 20 --overlap 5 ~/recording.wav")
-    print("  python3 panako.py monitor                 # Listen via microphone")
-    print("  python3 panako.py monitor ~/stream.wav    # Monitor an audio file")
+    print("  python3 panako.py monitor ~/stream.wav    # Monitor audio file as stream")
     print("  python3 panako.py batch ~/test_files")
     print("  python3 panako.py stats")
     print("\nSupported formats: WAV, MP3, FLAC, OGG, M4A, AAC, WMA")

@@ -22,7 +22,7 @@ The original Panako requires complex Java commands with multiple flags. This wra
 - ✅ Simplifies batch operations
 - ✅ Automatic duplicate detection (skips already-indexed files)
 - ✅ Deep query mode for long recordings (segments audio to find partial matches)
-- ✅ Real-time monitoring via microphone for live audio identification
+- ✅ Real-time monitoring mode for stream-style processing with live match output
 
 ## Installation
 
@@ -390,13 +390,10 @@ See [Deep Query](#deep-query) for detailed documentation.
 
 #### Real-time Monitoring
 
-For live audio identification using your microphone or an audio stream:
+For processing audio files as continuous streams with real-time match reporting:
 
 ```bash
-# Monitor using system microphone (default)
-python3 panako.py monitor
-
-# Monitor an audio file/stream
+# Monitor an audio file (reports matches as they are detected)
 python3 panako.py monitor /path/to/audio_stream.wav
 ```
 
@@ -805,33 +802,55 @@ for match in results:
 
 ## Real-time Monitoring
 
-The `monitor` command enables real-time audio identification by continuously listening to audio input and reporting matches as they are detected. This is useful for broadcast monitoring, live event tracking, or identifying music playing in a physical space.
+The `monitor` command processes audio files as continuous streams, reporting matches in real-time as they are detected. This is useful for monitoring long recordings, broadcast captures, or any scenario where you want to see matches as they occur rather than waiting for the full file to process.
 
 ### When to Use Monitor
 
-- **Broadcast monitoring** - Track what music plays on radio or TV
-- **Live event tracking** - Identify songs at concerts or venues
-- **Studio monitoring** - Identify tracks playing from tape archives or turntables
-- **Copyright detection** - Real-time monitoring of streams for licensed content
+- **Long recordings** - Process multi-hour recordings and see matches as they're found
+- **Broadcast captures** - Monitor recorded radio/TV streams for music identification
+- **Studio monitoring** - Process tape archive recordings with real-time feedback
+- **Simulated live monitoring** - Capture audio to a file, then monitor it
 
 ### How It Works
 
-1. **Audio capture** - Panako listens to the system microphone (or a provided audio file/stream)
-2. **Continuous fingerprinting** - Audio is fingerprinted in ~25-second chunks with 5-second overlap
-3. **Real-time matching** - Each chunk is matched against the database
-4. **Live reporting** - Matches are reported to the console as they are detected
+1. **Stream processing** - Panako processes the audio file as a continuous stream
+2. **Chunked fingerprinting** - Audio is fingerprinted in ~25-second chunks with 5-second overlap
+3. **Real-time matching** - Each chunk is matched against the database as it's processed
+4. **Live reporting** - Matches are printed to the console immediately when detected
 
 ### Usage
 
 ```bash
-# Monitor from system microphone (default)
-python3 panako.py monitor
-
-# Monitor an audio file (processes it as a continuous stream)
+# Monitor an audio file (required)
 python3 panako.py monitor /path/to/audio_stream.wav
 ```
 
-Press `Ctrl+C` to stop monitoring.
+Press `Ctrl+C` to stop monitoring before the file completes.
+
+### Live Microphone Monitoring
+
+Panako doesn't support direct microphone input. For live monitoring scenarios, first capture audio to a file using ffmpeg:
+
+```bash
+# macOS - capture 5 minutes from microphone
+ffmpeg -f avfoundation -i ":0" -t 300 recording.wav
+
+# Linux - capture 5 minutes from microphone
+ffmpeg -f pulse -i default -t 300 recording.wav
+
+# Then monitor the recording
+python3 panako.py monitor recording.wav
+```
+
+For continuous live monitoring, you can capture in one terminal and monitor in another:
+
+```bash
+# Terminal 1: Continuous capture (overwrites file every 5 minutes)
+while true; do ffmpeg -y -f avfoundation -i ":0" -t 300 /tmp/live_capture.wav; done
+
+# Terminal 2: Monitor the captures
+python3 panako.py monitor /tmp/live_capture.wav
+```
 
 ### Example Output
 
@@ -840,25 +859,15 @@ Press `Ctrl+C` to stop monitoring.
 Real-time Audio Monitor
 ================================================================================
 
-Source: System microphone (default audio input)
+Source: /path/to/broadcast_recording.wav
 
-Note: On macOS, grant microphone access to Terminal if prompted.
-
-Listening for matches... (Press Ctrl+C to stop)
+Processing audio stream... (Press Ctrl+C to stop)
 
 --------------------------------------------------------------------------------
 1;1;query;0.00;25.00;/path/to/music/song.wav;123;45.20;70.20;542;1.000;1.000
 1;1;query;20.00;45.00;/path/to/music/another_song.wav;456;0.00;25.00;389;1.000;1.000
 ...
 ```
-
-### Platform Notes
-
-| Platform | Notes |
-|----------|-------|
-| **macOS** | May need to grant microphone permission to Terminal/iTerm (System Settings → Privacy → Microphone) |
-| **Linux** | Requires working PulseAudio or ALSA setup. Usually works out of the box. |
-| **Windows (WSL)** | Audio passthrough to WSL can be complex. Native microphone access may require additional configuration. |
 
 ### Python API
 
@@ -867,10 +876,7 @@ from panako import Panako
 
 panako = Panako()
 
-# Monitor from microphone (runs until Ctrl+C)
-panako.monitor()
-
-# Monitor from an audio file/stream
+# Monitor an audio file (required)
 panako.monitor("/path/to/audio_stream.wav")
 ```
 
@@ -878,10 +884,10 @@ panako.monitor("/path/to/audio_stream.wav")
 
 | Feature | `query` | `deep-query` | `monitor` |
 |---------|---------|--------------|-----------|
-| Input | Audio file | Audio file | Microphone or stream |
-| Duration | One-shot | One-shot | Continuous |
-| Use case | Identify a file | Find partial matches | Real-time identification |
-| Output | Final results | Consolidated summary | Live matches |
+| Input | Audio file | Audio file | Audio file |
+| Processing | Full file, then results | Segments file, consolidates | Stream, real-time output |
+| Use case | Identify a file | Find partial matches | See matches as they occur |
+| Output | Final results | Consolidated summary | Live match stream |
 
 ## Troubleshooting
 
