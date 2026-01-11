@@ -255,13 +255,14 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         return java_opts
 
-    def _run_command(self, *args, capture_output=False):
+    def _run_command(self, *args, capture_output=False, config_overrides=None):
         """
         Run Panako command
 
         Args:
             *args: Command arguments (e.g., 'query', '/path/to/file.wav')
             capture_output: If True, return output; if False, print to console
+            config_overrides: Dict of config overrides (e.g., {'OLAF_HIT_THRESHOLD': 15})
 
         Returns:
             subprocess.CompletedProcess or None
@@ -271,6 +272,11 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             return None
 
         cmd = self.java_cmd + list(args)
+
+        # Add config overrides as KEY=VALUE arguments
+        if config_overrides:
+            for key, value in config_overrides.items():
+                cmd.append(f"{key}={value}")
 
         try:
             if capture_output:
@@ -406,13 +412,14 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print(f"\n{'='*80}\n")
 
-    def query(self, query_file, show_output=True):
+    def query(self, query_file, show_output=True, threshold=None):
         """
         Query database with audio file
 
         Args:
             query_file: Path to query audio file
             show_output: If True, print results; if False, return them
+            threshold: Optional match threshold (default: 30, lower = more matches)
 
         Returns:
             Query results if show_output=False
@@ -426,13 +433,20 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print(f"\n{'='*80}")
         print(f"Query: {query_file.name}")
+        if threshold:
+            print(f"Threshold: {threshold} (default: 30)")
         print(f"{'='*80}\n")
 
+        # Build config overrides
+        config = {}
+        if threshold is not None:
+            config['OLAF_HIT_THRESHOLD'] = threshold
+
         if show_output:
-            self._run_command('query', str(query_file))
+            self._run_command('query', str(query_file), config_overrides=config if config else None)
             return None
         else:
-            result = self._run_command('query', str(query_file), capture_output=True)
+            result = self._run_command('query', str(query_file), capture_output=True, config_overrides=config if config else None)
             return result.stdout if result else None
 
     def delete(self, path):
@@ -504,7 +518,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         print("="*80 + "\n")
         self._run_command('stats')
 
-    def monitor(self, audio_source=None):
+    def monitor(self, audio_source=None, threshold=None):
         """
         Monitor audio in real-time for fingerprint matches.
 
@@ -517,6 +531,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                          For live microphone input, first capture audio using:
                          ffmpeg -f avfoundation -i ":0" -t 300 recording.wav (macOS)
                          ffmpeg -f pulse -i default -t 300 recording.wav (Linux)
+            threshold: Optional match threshold (default: 30, lower = more matches)
 
         Note:
             - Panako processes the file as a continuous stream
@@ -525,7 +540,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         """
         if not audio_source:
             print("Error: Audio source file is required for monitoring.", file=sys.stderr)
-            print("\nUsage: python3 panako.py monitor <audio_file>", file=sys.stderr)
+            print("\nUsage: python3 panako.py monitor [--threshold N] <audio_file>", file=sys.stderr)
             print("\nFor live microphone capture, first record audio:", file=sys.stderr)
             print("  macOS:  ffmpeg -f avfoundation -i \":0\" -t 300 recording.wav", file=sys.stderr)
             print("  Linux:  ffmpeg -f pulse -i default -t 300 recording.wav", file=sys.stderr)
@@ -543,11 +558,18 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         print("Real-time Audio Monitor")
         print(f"{'='*80}\n")
         print(f"Source: {audio_source}")
+        if threshold:
+            print(f"Threshold: {threshold} (default: 30)")
         print("\nProcessing audio stream... (Press Ctrl+C to stop)\n")
         print("-" * 80)
 
+        # Build config overrides
+        config = {}
+        if threshold is not None:
+            config['OLAF_HIT_THRESHOLD'] = threshold
+
         try:
-            self._run_command('monitor', str(audio_source))
+            self._run_command('monitor', str(audio_source), config_overrides=config if config else None)
         except KeyboardInterrupt:
             print("\n" + "-" * 80)
             print("\nMonitoring stopped.")
@@ -1076,14 +1098,16 @@ def print_help():
     print("                              Skips already-indexed files unless --force is used")
     print("  init-manifest <path>        Mark files as indexed without re-processing")
     print("                              Use for files already in the database")
-    print("  query <file>                Search for a match in database")
+    print("  query [options] <file>      Search for a match in database")
     print("  deep-query [options] <file> Segment long audio and find partial matches")
-    print("  monitor <file>              Real-time audio monitoring (processes file as stream)")
+    print("  monitor [options] <file>    Real-time audio monitoring (processes file as stream)")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
     print("  list                        List all fingerprints in database")
     print("  delete <path>               Remove file(s) from database")
     print("  clear                       Clear entire database (with confirmation)")
+    print("\nQuery/Monitor Options:")
+    print("  --threshold <n>             Match threshold (default: 30, lower = more matches)")
     print("\nDeep Query Options:")
     print("  --segment <seconds>         Segment length (default: 15)")
     print("  --overlap <seconds>         Overlap between segments (default: 2)")
@@ -1095,6 +1119,7 @@ def print_help():
     print("  python3 panako.py store ~/Music")
     print("  python3 panako.py store --force ~/Music   # Re-index all files")
     print("  python3 panako.py query ~/unknown_song.wav")
+    print("  python3 panako.py query --threshold 15 ~/noisy_recording.wav")
     print("  python3 panako.py deep-query ~/long_recording.wav")
     print("  python3 panako.py deep-query --segment 20 --overlap 5 ~/recording.wav")
     print("  python3 panako.py monitor ~/stream.wav    # Monitor audio file as stream")
@@ -1159,9 +1184,30 @@ def main():
     elif command == 'query':
         if len(sys.argv) < 3:
             print("Error: Provide query file", file=sys.stderr)
-            print("Usage: python3 panako.py query <query_file>", file=sys.stderr)
+            print("Usage: python3 panako.py query [--threshold N] <query_file>", file=sys.stderr)
             sys.exit(1)
-        panako.query(sys.argv[2])
+
+        # Parse options
+        threshold = None
+        query_file = None
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            if args[i] == '--threshold' and i + 1 < len(args):
+                threshold = int(args[i + 1])
+                i += 2
+            elif not args[i].startswith('--'):
+                query_file = args[i]
+                i += 1
+            else:
+                print(f"Unknown option: {args[i]}", file=sys.stderr)
+                sys.exit(1)
+
+        if not query_file:
+            print("Error: Provide query file", file=sys.stderr)
+            sys.exit(1)
+
+        panako.query(query_file, threshold=threshold)
 
     elif command == 'deep-query':
         if len(sys.argv) < 3:
@@ -1235,9 +1281,23 @@ def main():
         panako.list_cache_files()
 
     elif command == 'monitor':
-        # Monitor can optionally take an audio source
-        audio_source = sys.argv[2] if len(sys.argv) > 2 else None
-        panako.monitor(audio_source)
+        # Parse options
+        threshold = None
+        audio_source = None
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            if args[i] == '--threshold' and i + 1 < len(args):
+                threshold = int(args[i + 1])
+                i += 2
+            elif not args[i].startswith('--'):
+                audio_source = args[i]
+                i += 1
+            else:
+                print(f"Unknown option: {args[i]}", file=sys.stderr)
+                sys.exit(1)
+
+        panako.monitor(audio_source, threshold=threshold)
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
