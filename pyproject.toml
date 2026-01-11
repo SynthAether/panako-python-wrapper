@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panako-python-wrapper"
+version = "0.1.0"
+description = "Python wrapper for Panako acoustic fingerprinting system"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.7"
+authors = [
+    {name = "SynthAether"}
+]
+keywords = [
+    "audio",
+    "fingerprinting",
+    "acoustic",
+    "music",
+    "recognition",
+    "panako",
+    "shazam",
+    "audio-matching"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+# No dependencies - uses only Python standard library
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/SynthAether/panako-python-wrapper"
+Documentation = "https://github.com/SynthAether/panako-python-wrapper#readme"
+Repository = "https://github.com/SynthAether/panako-python-wrapper.git"
+Issues = "https://github.com/SynthAether/panako-python-wrapper/issues"
+
+[project.scripts]
+panako = "panako:main"
+
+[tool.setuptools]
+py-modules = ["panako"]
