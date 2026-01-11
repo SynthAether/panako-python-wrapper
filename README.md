@@ -948,6 +948,152 @@ panako.monitor("/path/to/audio_stream.wav", threshold=15)
 | Use case | Identify a file | Find partial matches | See matches as they occur |
 | Output | Final results | Consolidated summary | Live match stream |
 
+## Expand Matches (Iterative Discovery)
+
+The `expand` command is designed for iterative match discovery. When you have a folder of **confirmed matches** (files that are all the same piece of music from different sources), you can use them as "seeds" to find MORE undetected instances in your database.
+
+### Why Use Expand?
+
+When working with audio archives (e.g., videocassettes, tape recordings, broadcast captures), you often find the same piece of music recorded multiple times from different sources. Each recording may have:
+
+- Different audio quality or compression
+- Different start/end points
+- Background noise or room acoustics
+- Speed or pitch variations
+
+Because of these variations, a single query might not find all instances. The `expand` command solves this by:
+
+1. Using multiple confirmed matches as query seeds
+2. Running deep-query on each seed file
+3. Filtering out files already in your confirmed folder
+4. Showing only NEW potential matches you haven't found yet
+5. Ranking results by confidence (how many seeds matched the same file)
+
+### When to Use Expand
+
+- **After initial discovery** - You've found a few matches manually and want to find more
+- **Building complete collections** - Ensuring you've found all instances of a piece
+- **Cross-referencing sources** - Different recordings might match different database entries
+
+### Usage
+
+```bash
+# Basic usage - expand from a folder of confirmed matches
+python3 panako.py expand ./found/comet/segment04/
+
+# With custom threshold (lower = more matches)
+python3 panako.py expand --threshold 15 ./found/comet/segment04/
+
+# With custom segment settings
+python3 panako.py expand --segment 20 --overlap 5 ./found/track01/
+
+# Save results to a report file
+python3 panako.py expand --report results.txt ./found/comet/segment04/
+```
+
+### Command Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--threshold <n>` | 30 | Match threshold (lower = more matches) |
+| `--segment <seconds>` | 15 | Length of each audio segment |
+| `--overlap <seconds>` | 2 | Overlap between consecutive segments |
+| `--min-segments <n>` | 1 | Minimum segments required to report a match |
+| `--report <file>` | none | Save results to a text file |
+
+### Example Workflow
+
+```bash
+# 1. You've manually confirmed these files are all the same piece:
+ls ./found/comet/segment04/
+# Vangelis-Cosmos-01-Comet-1a.wav
+# Vangelis-Cosmos-02-Comet-2b.wav
+# Vangelis-Cosmos-04-Comet-4d.wav
+# Vangelis-Cosmos-12-Children-Of-Stars.wav
+
+# 2. Use expand to find more instances
+python3 panako.py expand --threshold 15 ./found/comet/segment04/
+
+# 3. Review the new matches found
+# 4. Manually verify and add confirmed matches to the folder
+# 5. Repeat to find even more!
+```
+
+### Example Output
+
+```
+================================================================================
+Expand Matches: segment04
+================================================================================
+
+Seed files: 5
+Known stems: 5
+Settings: segment=15s, overlap=2s, min_segments=1, threshold=15
+
+--------------------------------------------------------------------------------
+[1/5] Querying: Vangelis-Cosmos-01-Comet-1a.wav
+--------------------------------------------------------------------------------
+  Found 8 matches, 3 new (not in seed folder)
+
+--------------------------------------------------------------------------------
+[2/5] Querying: Vangelis-Cosmos-02-Comet-2b.wav
+--------------------------------------------------------------------------------
+  Found 6 matches, 2 new (not in seed folder)
+
+...
+
+================================================================================
+EXPANSION RESULTS: 7 new file(s) discovered
+================================================================================
+
+1. Vangelis-Cosmos-Special-Edition-Track05
+   Path: /Users/user01/Data/Vangelis/ref/special-edition/track05.wav
+   Confidence: matched by 4/5 seeds
+   Total score: 12453 fingerprints
+
+2. Vangelis-Other-Album-Track12
+   Path: /Users/user01/Data/Vangelis/ref/other-album/track12.wav
+   Confidence: matched by 3/5 seeds
+   Total score: 8921 fingerprints
+
+3. Unknown-Recording-Segment03
+   Path: /Users/user01/Data/archive/tape-recordings/segment03.wav
+   Confidence: matched by 2/5 seeds
+   Total score: 4532 fingerprints
+```
+
+### How Confidence is Calculated
+
+- **"matched by 4/5 seeds"** means 4 out of 5 seed files found this match
+- Higher seed count = higher confidence that it's the same piece
+- Files matched by multiple seeds are ranked higher in results
+
+### Python API
+
+```python
+from panako import Panako
+
+panako = Panako()
+
+# Basic expand
+results = panako.expand("./found/comet/segment04/")
+
+# With custom parameters
+results = panako.expand(
+    "./found/comet/segment04/",
+    segment_length=20,
+    overlap=5,
+    min_segments=1,
+    threshold=15,
+    report_file="results.txt"
+)
+
+# Process results
+for match in results:
+    print(f"{match['stem']}: matched by {match['seed_count']} seeds")
+    print(f"  Path: {match['path']}")
+```
+
 ## Troubleshooting
 
 ### Java Not Found
