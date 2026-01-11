@@ -971,6 +971,234 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
             return results
 
+    def expand(self, seed_folder, segment_length=15, overlap=2, min_segments=1, threshold=None, report_file=None):
+        """
+        Expand a set of confirmed matches by searching for more instances.
+
+        Takes a folder containing confirmed matches (files that are all the same piece
+        of music from different sources) and uses each as a query to find MORE
+        undetected instances in the database.
+
+        Args:
+            seed_folder: Path to folder containing confirmed matches (seed files)
+            segment_length: Length of each segment in seconds (default: 15)
+            overlap: Overlap between segments in seconds (default: 2)
+            min_segments: Minimum segment matches to consider (default: 1)
+            threshold: Optional match threshold (default: 30, lower = more matches)
+            report_file: Optional path to save report (default: None)
+
+        Returns:
+            List of new matches (not already in seed folder)
+        """
+        # Expand ~ in paths
+        seed_folder = Path(os.path.expanduser(str(seed_folder))).resolve()
+
+        if not seed_folder.exists():
+            print(f"Error: Seed folder not found: {seed_folder}", file=sys.stderr)
+            return None
+
+        if not seed_folder.is_dir():
+            print(f"Error: {seed_folder} is not a directory", file=sys.stderr)
+            return None
+
+        # Find all audio files in seed folder
+        seed_files = []
+        for ext in self.AUDIO_EXTENSIONS:
+            seed_files.extend(seed_folder.glob(f"*{ext}"))
+
+        seed_files = sorted(seed_files)
+
+        if not seed_files:
+            print(f"No audio files found in {seed_folder}")
+            print(f"Supported formats: {', '.join(self.AUDIO_EXTENSIONS)}")
+            return None
+
+        # Extract stem names from seed files (to filter out known matches)
+        seed_stems = set()
+        for f in seed_files:
+            seed_stems.add(f.stem)  # filename without extension
+
+        print(f"\n{'='*80}")
+        print(f"Expand Matches: {seed_folder.name}")
+        print(f"{'='*80}\n")
+        print(f"Seed files: {len(seed_files)}")
+        print(f"Known stems: {len(seed_stems)}")
+        info_line = f"Settings: segment={segment_length}s, overlap={overlap}s, min_segments={min_segments}"
+        if threshold:
+            info_line += f", threshold={threshold}"
+        print(info_line)
+        print()
+
+        # Collect all matches from all seed files
+        all_new_matches = {}  # stem -> match info
+
+        for i, seed_file in enumerate(seed_files, 1):
+            print(f"\n{'-'*80}")
+            print(f"[{i}/{len(seed_files)}] Querying: {seed_file.name}")
+            print(f"{'-'*80}")
+
+            # Run deep_query on this seed file (suppress its normal output)
+            results = self._expand_query(
+                seed_file,
+                segment_length=segment_length,
+                overlap=overlap,
+                min_segments=min_segments,
+                threshold=threshold
+            )
+
+            if not results:
+                print("  No matches found")
+                continue
+
+            # Filter out matches whose stem is in seed_stems
+            new_count = 0
+            for match in results:
+                match_path = Path(match['path'])
+                match_stem = match_path.stem
+
+                # Skip if this stem is already in seed folder
+                if match_stem in seed_stems:
+                    continue
+
+                # Skip if we've already found this match from another seed
+                if match_stem in all_new_matches:
+                    # Update the match count (how many seeds found this)
+                    all_new_matches[match_stem]['seed_count'] += 1
+                    all_new_matches[match_stem]['total_score'] += match.get('total_score', match.get('score', 0))
+                else:
+                    all_new_matches[match_stem] = {
+                        'stem': match_stem,
+                        'path': match['path'],
+                        'seed_count': 1,
+                        'total_score': match.get('total_score', match.get('score', 0)),
+                        'segment_count': match.get('segment_count', 1),
+                        'total_segments': match.get('total_segments', 1)
+                    }
+                    new_count += 1
+
+            print(f"  Found {len(results)} matches, {new_count} new (not in seed folder)")
+
+        # Sort results by seed_count (how many seeds matched this), then by score
+        sorted_matches = sorted(
+            all_new_matches.values(),
+            key=lambda x: (x['seed_count'], x['total_score']),
+            reverse=True
+        )
+
+        # Print results
+        print(f"\n{'='*80}")
+        print(f"EXPANSION RESULTS: {len(sorted_matches)} new file(s) discovered")
+        print(f"{'='*80}\n")
+
+        if not sorted_matches:
+            print("No new matches found.")
+            print("All matches were already in the seed folder.")
+        else:
+            for rank, match in enumerate(sorted_matches, 1):
+                confidence = f"matched by {match['seed_count']}/{len(seed_files)} seeds"
+                print(f"{rank}. {match['stem']}")
+                print(f"   Path: {match['path']}")
+                print(f"   Confidence: {confidence}")
+                print(f"   Total score: {match['total_score']} fingerprints")
+                print()
+
+        print(f"{'='*80}\n")
+
+        # Save report if requested
+        if report_file:
+            report_path = Path(os.path.expanduser(str(report_file)))
+            with open(report_path, 'w') as f:
+                f.write(f"Expand Matches Report\n")
+                f.write(f"{'='*60}\n\n")
+                f.write(f"Seed folder: {seed_folder}\n")
+                f.write(f"Seed files: {len(seed_files)}\n")
+                f.write(f"New matches found: {len(sorted_matches)}\n\n")
+                f.write(f"Settings:\n")
+                f.write(f"  segment_length: {segment_length}s\n")
+                f.write(f"  overlap: {overlap}s\n")
+                f.write(f"  min_segments: {min_segments}\n")
+                f.write(f"  threshold: {threshold or 'default (30)'}\n\n")
+                f.write(f"{'='*60}\n")
+                f.write(f"NEW MATCHES\n")
+                f.write(f"{'='*60}\n\n")
+
+                for rank, match in enumerate(sorted_matches, 1):
+                    f.write(f"{rank}. {match['stem']}\n")
+                    f.write(f"   Path: {match['path']}\n")
+                    f.write(f"   Matched by: {match['seed_count']}/{len(seed_files)} seeds\n")
+                    f.write(f"   Total score: {match['total_score']}\n\n")
+
+            print(f"Report saved to: {report_path}")
+
+        return sorted_matches
+
+    def _expand_query(self, query_file, segment_length=15, overlap=2, min_segments=1, threshold=None):
+        """
+        Internal method for expand - runs deep_query but returns raw results without printing.
+        """
+        query_file = Path(query_file)
+
+        if not query_file.exists():
+            return []
+
+        # Check ffmpeg/ffprobe availability
+        try:
+            subprocess.run(['ffprobe', '-version'], capture_output=True, timeout=5)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return []
+
+        duration = self._get_audio_duration(query_file)
+        if duration is None:
+            return []
+
+        # Handle edge case: file shorter than segment length
+        if duration < segment_length:
+            if duration < 3:
+                return []
+            segment_length = duration
+
+        # Create temp directory for segments
+        with tempfile.TemporaryDirectory(prefix='panako_expand_') as temp_dir:
+            # Segment the audio
+            segments = self._segment_audio(query_file, segment_length, overlap, temp_dir)
+
+            if not segments:
+                return []
+
+            # Query each segment and collect results
+            all_matches = defaultdict(lambda: {'count': 0, 'segments': [], 'total_score': 0})
+
+            for seg_path, start_time, end_time in segments:
+                # Run query with optional threshold
+                config = {'OLAF_HIT_THRESHOLD': threshold} if threshold else None
+                result = self._run_command('query', str(seg_path), capture_output=True, config_overrides=config)
+
+                if result and result.stdout:
+                    matches = self._parse_query_output(result.stdout)
+                    for match in matches:
+                        path = match.get('path', 'unknown')
+                        score = match.get('score', 1)
+                        all_matches[path]['count'] += 1
+                        all_matches[path]['total_score'] += score
+                        all_matches[path]['segments'].append({
+                            'start': start_time,
+                            'end': end_time,
+                            'score': score
+                        })
+
+            # Filter and return results
+            results = []
+            for path, data in all_matches.items():
+                if data['count'] >= min_segments:
+                    results.append({
+                        'path': path,
+                        'segment_count': data['count'],
+                        'total_segments': len(segments),
+                        'total_score': data['total_score']
+                    })
+
+            return results
+
     def verify_setup(self):
         """Verify that Panako is properly configured"""
         print("\n" + "="*80)
@@ -1347,18 +1575,21 @@ def print_help():
     print("  query [options] <file>      Search for a match in database")
     print("  deep-query [options] <file> Segment long audio and find partial matches")
     print("  monitor [options] <file>    Real-time audio monitoring (processes file as stream)")
+    print("  expand [options] <folder>   Find more matches using confirmed matches as seeds")
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
     print("  list                        List all fingerprints in database")
     print("  delete <path>               Remove file(s) from database")
     print("  clear                       Clear entire database (with confirmation)")
-    print("\nMatching Options (query, deep-query, monitor):")
+    print("\nMatching Options (query, deep-query, monitor, expand):")
     print("  --threshold <n>             Match threshold (default: 30, lower = more matches)")
-    print("\nDeep Query Options (deep-query only):")
+    print("\nDeep Query Options (deep-query, expand):")
     print("  --segment <seconds>         Segment length (default: 15)")
     print("  --overlap <seconds>         Overlap between segments (default: 2)")
     print("  --min-segments <n>          Minimum segments to match (default: 1)")
-    print("  --details                   Show per-segment match details")
+    print("  --details                   Show per-segment match details (deep-query only)")
+    print("\nExpand Options:")
+    print("  --report <file>             Save results to a report file")
     print("\nExamples:")
     print("  python3 panako.py verify")
     print("  python3 panako.py init-manifest ~/Data/MyArtist/ref  # Mark existing as indexed")
@@ -1369,6 +1600,8 @@ def print_help():
     print("  python3 panako.py deep-query ~/long_recording.wav")
     print("  python3 panako.py deep-query --segment 20 --overlap 5 ~/recording.wav")
     print("  python3 panako.py monitor ~/stream.wav    # Monitor audio file as stream")
+    print("  python3 panako.py expand ./found/comet/segment04  # Find more matches")
+    print("  python3 panako.py expand --threshold 15 --report results.txt ./found/track01")
     print("  python3 panako.py batch ~/test_files")
     print("  python3 panako.py stats")
     print("\nSupported formats: WAV, MP3, FLAC, OGG, M4A, AAC, WMA")
@@ -1555,6 +1788,59 @@ def main():
                 sys.exit(1)
 
         panako.monitor(audio_source, threshold=threshold)
+
+    elif command == 'expand':
+        if len(sys.argv) < 3:
+            print("Error: Provide seed folder path", file=sys.stderr)
+            print("Usage: python3 panako.py expand [options] <seed_folder>", file=sys.stderr)
+            sys.exit(1)
+
+        # Parse options
+        segment_length = 15
+        overlap = 2
+        min_segments = 1
+        threshold = None
+        report_file = None
+        seed_folder = None
+
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            arg = args[i]
+            if arg == '--segment' and i + 1 < len(args):
+                segment_length = int(args[i + 1])
+                i += 2
+            elif arg == '--overlap' and i + 1 < len(args):
+                overlap = int(args[i + 1])
+                i += 2
+            elif arg == '--min-segments' and i + 1 < len(args):
+                min_segments = int(args[i + 1])
+                i += 2
+            elif arg == '--threshold' and i + 1 < len(args):
+                threshold = int(args[i + 1])
+                i += 2
+            elif arg == '--report' and i + 1 < len(args):
+                report_file = args[i + 1]
+                i += 2
+            elif not arg.startswith('--'):
+                seed_folder = arg
+                i += 1
+            else:
+                print(f"Unknown option: {arg}", file=sys.stderr)
+                sys.exit(1)
+
+        if not seed_folder:
+            print("Error: Provide seed folder path", file=sys.stderr)
+            sys.exit(1)
+
+        panako.expand(
+            seed_folder,
+            segment_length=segment_length,
+            overlap=overlap,
+            min_segments=min_segments,
+            threshold=threshold,
+            report_file=report_file
+        )
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
