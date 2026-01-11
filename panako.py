@@ -1053,7 +1053,13 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             # Filter out matches whose stem is in seed_stems
             new_count = 0
             for match in results:
-                match_path = Path(match['path'])
+                match_path_str = match['path']
+
+                # Skip invalid/null matches
+                if not match_path_str or match_path_str == 'null' or match_path_str == 'unknown':
+                    continue
+
+                match_path = Path(match_path_str)
                 match_stem = match_path.stem
 
                 # Skip if this stem is already in seed folder
