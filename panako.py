@@ -6,6 +6,7 @@ Handles all Java configuration and provides clean Python interface
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -469,7 +470,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
     def clear(self, confirm=True):
         """
-        Clear entire database
+        Clear entire database, cache, and manifest
 
         Args:
             confirm: If True, ask for confirmation
@@ -482,11 +483,19 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print("Clearing database...")
         self._run_command('clear')
-        # Also clear the manifest
+
+        # Clear the fingerprint cache
+        cache_path = Path.home() / ".panako" / "dbs" / "olaf_cache"
+        if cache_path.exists():
+            shutil.rmtree(cache_path)
+            print("Cache cleared.")
+
+        # Clear the manifest
         if self.MANIFEST_FILE.exists():
             self.MANIFEST_FILE.unlink()
             print("Manifest cleared.")
-        print("Database cleared.")
+
+        print("Database fully cleared.")
 
     def stats(self):
         """Show database statistics"""
