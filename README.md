@@ -752,6 +752,18 @@ RESULTS: 5 file(s) matched (min 1 segment(s))
 - Use `--min-segments 2` or higher to reduce false positives
 - Use `1` (default) when you want to catch every possible match
 
+### Edge Cases
+
+**Short audio files:**
+- If the audio file is shorter than the segment length (e.g., a 10-second file with 15-second segments), the entire file is used as a single segment
+- Files shorter than 3 seconds are rejected with an error (too short for reliable fingerprinting)
+- The wrapper automatically detects this and informs you: "File is shorter than segment length, using entire file as a single query segment"
+
+**When to use regular `query` vs `deep-query`:**
+- Use `query` for short clips (< 30 seconds) or when you expect a full match
+- Use `deep-query` for longer recordings or when you expect partial matches
+- For very short files, both commands will work, but `query` is simpler
+
 ### Python API
 
 ```python
