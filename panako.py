@@ -618,14 +618,20 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             return []
 
         segments = []
-        step = segment_length - overlap
+        step = max(segment_length - overlap, 1)  # Ensure step is at least 1 second
         start = 0.0
         segment_num = 0
 
+        # Minimum segment duration (but allow first segment to be shorter for very short files)
+        min_segment_duration = 3
+
         while start < duration:
             end = min(start + segment_length, duration)
+            segment_duration = end - start
+
             # Skip very short final segments (less than 3 seconds)
-            if end - start < 3:
+            # But always allow the first segment even if file is short
+            if segment_duration < min_segment_duration and segment_num > 0:
                 break
 
             segment_path = Path(temp_dir) / f"segment_{segment_num:04d}.wav"
@@ -738,13 +744,26 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             print(f"Error: Could not determine audio duration", file=sys.stderr)
             return None
 
+        # Handle edge case: file shorter than segment length
+        if duration < segment_length:
+            if duration < 3:
+                print(f"Error: Audio file too short ({duration:.1f}s). Minimum is 3 seconds.", file=sys.stderr)
+                return None
+            # Adjust segment length to file duration for short files
+            effective_segment = duration
+            print(f"Note: File is shorter than segment length ({duration:.1f}s < {segment_length}s)")
+            print(f"      Using entire file as a single query segment")
+            segment_length = duration
+        else:
+            effective_segment = segment_length
+
         # Format duration for display
         dur_min = int(duration // 60)
         dur_sec = int(duration % 60)
 
         print(f"\n{'='*80}")
         print(f"Deep Query: {query_file.name}")
-        print(f"Duration: {dur_min}:{dur_sec:02d} | Segment: {segment_length}s | Overlap: {overlap}s")
+        print(f"Duration: {dur_min}:{dur_sec:02d} | Segment: {effective_segment:.0f}s | Overlap: {overlap}s")
         print(f"{'='*80}\n")
 
         # Create temp directory for segments
