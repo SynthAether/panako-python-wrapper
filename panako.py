@@ -271,12 +271,19 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             print("Error: Panako not properly initialized", file=sys.stderr)
             return None
 
-        cmd = self.java_cmd + list(args)
+        # Build command - insert config overrides as Java system properties before -jar
+        cmd = list(self.java_cmd)  # Make a copy
 
-        # Add config overrides as KEY=VALUE arguments
+        # Add config overrides as Java system properties (must come before -jar)
         if config_overrides:
+            # Find the -jar index to insert properties before it
+            jar_index = cmd.index('-jar')
             for key, value in config_overrides.items():
-                cmd.append(f"{key}={value}")
+                cmd.insert(jar_index, f"-D{key}={value}")
+                jar_index += 1  # Adjust index since we inserted
+
+        # Add command arguments
+        cmd.extend(args)
 
         try:
             if capture_output:
