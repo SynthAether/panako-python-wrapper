@@ -459,6 +459,9 @@ panako.init_manifest("/path/to/already/indexed/folder")
 # Query
 panako.query("/path/to/query.wav")
 
+# Query with custom threshold (lower = more matches, default: 30)
+panako.query("/path/to/query.wav", threshold=15)
+
 # Show statistics
 panako.stats()
 ```
@@ -479,6 +482,9 @@ panako.stats()
 # Query all test files
 print("\nTesting queries...")
 panako.batch_query("/path/to/test/queries")
+
+# Batch query with custom threshold
+panako.batch_query("/path/to/test/queries", threshold=15)
 ```
 
 #### Managing Database
@@ -607,7 +613,7 @@ panako stats
     ├── indexed_files.txt            # Manifest tracking indexed files
     └── dbs/                         # Fingerprint storage
         ├── olaf_cache/              # Cached fingerprints (.tdb files)
-        └── [LMDB database files]
+        └── olaf_db/                 # LMDB database (paths and fingerprint index)
 ```
 
 ### Running from Different Directories
@@ -792,7 +798,8 @@ results = panako.deep_query(
     segment_length=20,
     overlap=5,
     min_segments=2,
-    show_details=True
+    show_details=True,
+    threshold=15  # Lower = more matches (default: 30)
 )
 
 # Process results
@@ -878,6 +885,9 @@ panako = Panako()
 
 # Monitor an audio file (required)
 panako.monitor("/path/to/audio_stream.wav")
+
+# Monitor with custom threshold (lower = more matches)
+panako.monitor("/path/to/audio_stream.wav", threshold=15)
 ```
 
 ### Monitor vs Query vs Deep Query

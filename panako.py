@@ -672,7 +672,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         for i, audio_file in enumerate(audio_files, 1):
             print(f"[{i}/{len(audio_files)}] ", end="")
-            self.query(audio_file, show_output=True)
+            self.query(audio_file, show_output=True, threshold=threshold)
 
     def _get_audio_duration(self, audio_file):
         """Get duration of audio file in seconds using ffprobe"""
