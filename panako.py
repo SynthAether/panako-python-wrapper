@@ -917,6 +917,9 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             # Filter and sort results
             results = []
             for path, data in all_matches.items():
+                # Skip invalid/null matches
+                if not path or path == 'null' or path == 'unknown':
+                    continue
                 if data['count'] >= min_segments:
                     # Calculate time ranges from segments
                     segments_list = sorted(data['segments'], key=lambda x: x['start'])
@@ -971,7 +974,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
             return results
 
-    def expand(self, seed_folder, segment_length=15, overlap=2, min_segments=1, threshold=None, report_file=None):
+    def expand(self, seed_folder, segment_length=15, overlap=2, min_segments=1, threshold=None, report_file=None, include_seeds=False):
         """
         Expand a set of confirmed matches by searching for more instances.
 
@@ -986,9 +989,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             min_segments: Minimum segment matches to consider (default: 1)
             threshold: Optional match threshold (default: 30, lower = more matches)
             report_file: Optional path to save report (default: None)
+            include_seeds: If True, include matches from files in seed folder (default: False)
 
         Returns:
-            List of new matches (not already in seed folder)
+            List of new matches (not already in seed folder, unless include_seeds=True)
         """
         # Expand ~ in paths
         seed_folder = Path(os.path.expanduser(str(seed_folder))).resolve()
@@ -1050,7 +1054,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                 print("  No matches found")
                 continue
 
-            # Filter out matches whose stem is in seed_stems
+            # Filter out matches whose stem is in seed_stems (unless include_seeds is True)
             new_count = 0
             for match in results:
                 match_path_str = match['path']
@@ -1062,8 +1066,8 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                 match_path = Path(match_path_str)
                 match_stem = match_path.stem
 
-                # Skip if this stem is already in seed folder
-                if match_stem in seed_stems:
+                # Skip if this stem is already in seed folder (unless include_seeds is True)
+                if not include_seeds and match_stem in seed_stems:
                     continue
 
                 # Skip if we've already found this match from another seed
@@ -1082,7 +1086,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                     }
                     new_count += 1
 
-            print(f"  Found {len(results)} matches, {new_count} new (not in seed folder)")
+            if include_seeds:
+                print(f"  Found {len(results)} matches, {new_count} added")
+            else:
+                print(f"  Found {len(results)} matches, {new_count} new (not in seed folder)")
 
         # Sort results by seed_count (how many seeds matched this), then by score
         sorted_matches = sorted(
@@ -1093,12 +1100,17 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         # Print results
         print(f"\n{'='*80}")
-        print(f"EXPANSION RESULTS: {len(sorted_matches)} new file(s) discovered")
+        if include_seeds:
+            print(f"EXPANSION RESULTS: {len(sorted_matches)} file(s) discovered")
+        else:
+            print(f"EXPANSION RESULTS: {len(sorted_matches)} new file(s) discovered")
         print(f"{'='*80}\n")
 
         if not sorted_matches:
-            print("No new matches found.")
-            print("All matches were already in the seed folder.")
+            print("No matches found.")
+            if not include_seeds:
+                print("All matches were already in the seed folder.")
+                print("Try --include-seeds to see all matches including seed files.")
         else:
             for rank, match in enumerate(sorted_matches, 1):
                 confidence = f"matched by {match['seed_count']}/{len(seed_files)} seeds"
@@ -1123,9 +1135,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                 f.write(f"  segment_length: {segment_length}s\n")
                 f.write(f"  overlap: {overlap}s\n")
                 f.write(f"  min_segments: {min_segments}\n")
-                f.write(f"  threshold: {threshold or 'default (30)'}\n\n")
+                f.write(f"  threshold: {threshold or 'default (30)'}\n")
+                f.write(f"  include_seeds: {include_seeds}\n\n")
                 f.write(f"{'='*60}\n")
-                f.write(f"NEW MATCHES\n")
+                f.write(f"MATCHES\n" if include_seeds else f"NEW MATCHES\n")
                 f.write(f"{'='*60}\n\n")
 
                 for rank, match in enumerate(sorted_matches, 1):
@@ -1596,6 +1609,7 @@ def print_help():
     print("  --details                   Show per-segment match details (deep-query only)")
     print("\nExpand Options:")
     print("  --report <file>             Save results to a report file")
+    print("  --include-seeds             Include matches from files in seed folder")
     print("\nExamples:")
     print("  python3 panako.py verify")
     print("  python3 panako.py init-manifest ~/Data/MyArtist/ref  # Mark existing as indexed")
@@ -1807,6 +1821,7 @@ def main():
         min_segments = 1
         threshold = None
         report_file = None
+        include_seeds = False
         seed_folder = None
 
         args = sys.argv[2:]
@@ -1828,6 +1843,9 @@ def main():
             elif arg == '--report' and i + 1 < len(args):
                 report_file = args[i + 1]
                 i += 2
+            elif arg == '--include-seeds':
+                include_seeds = True
+                i += 1
             elif not arg.startswith('--'):
                 seed_folder = arg
                 i += 1
@@ -1845,7 +1863,8 @@ def main():
             overlap=overlap,
             min_segments=min_segments,
             threshold=threshold,
-            report_file=report_file
+            report_file=report_file,
+            include_seeds=include_seeds
         )
 
     else:
