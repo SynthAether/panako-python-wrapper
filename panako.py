@@ -271,12 +271,19 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             print("Error: Panako not properly initialized", file=sys.stderr)
             return None
 
-        cmd = self.java_cmd + list(args)
+        # Build command - insert config overrides as Java system properties before -jar
+        cmd = list(self.java_cmd)  # Make a copy
 
-        # Add config overrides as KEY=VALUE arguments
+        # Add config overrides as Java system properties (must come before -jar)
         if config_overrides:
+            # Find the -jar index to insert properties before it
+            jar_index = cmd.index('-jar')
             for key, value in config_overrides.items():
-                cmd.append(f"{key}={value}")
+                cmd.insert(jar_index, f"-D{key}={value}")
+                jar_index += 1  # Adjust index since we inserted
+
+        # Add command arguments
+        cmd.extend(args)
 
         try:
             if capture_output:
@@ -778,7 +785,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         return matches
 
-    def deep_query(self, query_file, segment_length=15, overlap=2, min_segments=1, show_details=False):
+    def deep_query(self, query_file, segment_length=15, overlap=2, min_segments=1, show_details=False, threshold=None):
         """
         Query database by segmenting a long audio file into overlapping chunks.
 
@@ -791,6 +798,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             overlap: Overlap between segments in seconds (default: 2)
             min_segments: Minimum segment matches to report a file (default: 1)
             show_details: If True, show per-segment match details
+            threshold: Optional match threshold (default: 30, lower = more matches)
 
         Returns:
             Dict of results with match statistics
@@ -833,7 +841,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print(f"\n{'='*80}")
         print(f"Deep Query: {query_file.name}")
-        print(f"Duration: {dur_min}:{dur_sec:02d} | Segment: {effective_segment:.0f}s | Overlap: {overlap}s")
+        info_line = f"Duration: {dur_min}:{dur_sec:02d} | Segment: {effective_segment:.0f}s | Overlap: {overlap}s"
+        if threshold:
+            info_line += f" | Threshold: {threshold}"
+        print(info_line)
         print(f"{'='*80}\n")
 
         # Create temp directory for segments
@@ -857,8 +868,9 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
                 print(f"  [{i}/{len(segments)}] {start_fmt}-{end_fmt}...", end=" ", flush=True)
 
-                # Run query
-                result = self._run_command('query', str(seg_path), capture_output=True)
+                # Run query with optional threshold
+                config = {'OLAF_HIT_THRESHOLD': threshold} if threshold else None
+                result = self._run_command('query', str(seg_path), capture_output=True, config_overrides=config)
 
                 if result and result.stdout:
                     matches = self._parse_query_output(result.stdout)
@@ -1106,9 +1118,9 @@ def print_help():
     print("  list                        List all fingerprints in database")
     print("  delete <path>               Remove file(s) from database")
     print("  clear                       Clear entire database (with confirmation)")
-    print("\nQuery/Monitor Options:")
+    print("\nMatching Options (query, deep-query, monitor):")
     print("  --threshold <n>             Match threshold (default: 30, lower = more matches)")
-    print("\nDeep Query Options:")
+    print("\nDeep Query Options (deep-query only):")
     print("  --segment <seconds>         Segment length (default: 15)")
     print("  --overlap <seconds>         Overlap between segments (default: 2)")
     print("  --min-segments <n>          Minimum segments to match (default: 1)")
@@ -1220,6 +1232,7 @@ def main():
         overlap = 2
         min_segments = 1
         show_details = False
+        threshold = None
         query_file = None
 
         args = sys.argv[2:]
@@ -1234,6 +1247,9 @@ def main():
                 i += 2
             elif arg == '--min-segments' and i + 1 < len(args):
                 min_segments = int(args[i + 1])
+                i += 2
+            elif arg == '--threshold' and i + 1 < len(args):
+                threshold = int(args[i + 1])
                 i += 2
             elif arg == '--details':
                 show_details = True
@@ -1254,7 +1270,8 @@ def main():
             segment_length=segment_length,
             overlap=overlap,
             min_segments=min_segments,
-            show_details=show_details
+            show_details=show_details,
+            threshold=threshold
         )
 
     elif command == 'delete':
