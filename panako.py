@@ -797,6 +797,8 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                     matches.append({
                         'path': match_path,
                         'score': match_score,
+                        'query_start': float(parts[3]) if parts[3] else 0,
+                        'query_stop': float(parts[4]) if parts[4] else 0,
                         'match_start': float(parts[7]) if parts[7] else 0,
                         'match_stop': float(parts[8]) if parts[8] else 0
                     })
@@ -899,12 +901,24 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                         for match in matches:
                             path = match.get('path', 'unknown')
                             score = match.get('score', 1)
+                            # Get timing from Panako output
+                            query_start = match.get('query_start', 0)
+                            query_stop = match.get('query_stop', 0)
+                            match_start = match.get('match_start', 0)
+                            match_stop = match.get('match_stop', 0)
+
                             all_matches[path]['count'] += 1
                             all_matches[path]['total_score'] += score
                             all_matches[path]['segments'].append({
                                 'start': start_time,
                                 'end': end_time,
-                                'score': score
+                                'score': score,
+                                # Precise timing within query file (segment offset + match position)
+                                'query_start': start_time + query_start,
+                                'query_stop': start_time + query_stop,
+                                # Position in matched database file
+                                'match_start': match_start,
+                                'match_stop': match_stop
                             })
                         if show_details:
                             for match in matches:
@@ -924,14 +938,38 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                     # Calculate time ranges from segments
                     segments_list = sorted(data['segments'], key=lambda x: x['start'])
 
-                    # Merge overlapping/adjacent time ranges
-                    time_ranges = []
+                    # Merge overlapping/adjacent segment ranges (coarse timing)
+                    segment_ranges = []
                     for seg in segments_list:
-                        if time_ranges and seg['start'] <= time_ranges[-1][1] + overlap:
+                        # Fixed: removed "+ overlap" which artificially extended ranges
+                        if segment_ranges and seg['start'] <= segment_ranges[-1][1]:
                             # Extend previous range
-                            time_ranges[-1] = (time_ranges[-1][0], max(time_ranges[-1][1], seg['end']))
+                            segment_ranges[-1] = (segment_ranges[-1][0], max(segment_ranges[-1][1], seg['end']))
                         else:
-                            time_ranges.append((seg['start'], seg['end']))
+                            segment_ranges.append((seg['start'], seg['end']))
+
+                    # Calculate precise query timing ranges (from Panako's query offsets)
+                    query_sorted = sorted(data['segments'], key=lambda x: x.get('query_start', x['start']))
+                    query_ranges = []
+                    for seg in query_sorted:
+                        q_start = seg.get('query_start', seg['start'])
+                        q_stop = seg.get('query_stop', seg['end'])
+                        if query_ranges and q_start <= query_ranges[-1][1]:
+                            query_ranges[-1] = (query_ranges[-1][0], max(query_ranges[-1][1], q_stop))
+                        else:
+                            query_ranges.append((q_start, q_stop))
+
+                    # Calculate match timing ranges (position in matched database file)
+                    match_sorted = sorted(data['segments'], key=lambda x: x.get('match_start', 0))
+                    match_ranges = []
+                    for seg in match_sorted:
+                        m_start = seg.get('match_start', 0)
+                        m_stop = seg.get('match_stop', 0)
+                        if m_start > 0 or m_stop > 0:  # Only include if we have valid timing
+                            if match_ranges and m_start <= match_ranges[-1][1]:
+                                match_ranges[-1] = (match_ranges[-1][0], max(match_ranges[-1][1], m_stop))
+                            else:
+                                match_ranges.append((m_start, m_stop))
 
                     results.append({
                         'path': path,
@@ -939,7 +977,9 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                         'total_segments': len(segments),
                         'percentage': (data['count'] / len(segments)) * 100,
                         'total_score': data['total_score'],
-                        'time_ranges': time_ranges
+                        'time_ranges': segment_ranges,  # Coarse segment ranges (for backwards compat)
+                        'query_ranges': query_ranges,   # Precise query file timing
+                        'match_ranges': match_ranges    # Position in matched database file
                     })
 
             # Sort by segment count (descending), then by total score
@@ -961,13 +1001,23 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                     print(f"   Segments: {r['segment_count']}/{r['total_segments']} ({r['percentage']:.1f}%)")
                     print(f"   Total score: {r['total_score']} fingerprints")
 
-                    # Format time ranges
-                    range_strs = []
-                    for start, end in r['time_ranges']:
+                    # Format query file time ranges (precise timing)
+                    query_strs = []
+                    for start, end in r.get('query_ranges', r['time_ranges']):
                         start_fmt = f"{int(start//60)}:{int(start%60):02d}"
                         end_fmt = f"{int(end//60)}:{int(end%60):02d}"
-                        range_strs.append(f"{start_fmt}-{end_fmt}")
-                    print(f"   Matched at: {', '.join(range_strs)}")
+                        query_strs.append(f"{start_fmt}-{end_fmt}")
+                    print(f"   Query file match: {', '.join(query_strs)}")
+
+                    # Format match file time ranges (position in database file)
+                    match_ranges = r.get('match_ranges', [])
+                    if match_ranges:
+                        match_strs = []
+                        for start, end in match_ranges:
+                            start_fmt = f"{int(start//60)}:{int(start%60):02d}"
+                            end_fmt = f"{int(end//60)}:{int(end%60):02d}"
+                            match_strs.append(f"{start_fmt}-{end_fmt}")
+                        print(f"   In matched file: {', '.join(match_strs)}")
                     print()
 
             print(f"{'='*80}\n")
@@ -1197,23 +1247,46 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                     for match in matches:
                         path = match.get('path', 'unknown')
                         score = match.get('score', 1)
+                        # Get timing from Panako output
+                        query_start = match.get('query_start', 0)
+                        query_stop = match.get('query_stop', 0)
+                        match_start = match.get('match_start', 0)
+                        match_stop = match.get('match_stop', 0)
+
                         all_matches[path]['count'] += 1
                         all_matches[path]['total_score'] += score
                         all_matches[path]['segments'].append({
                             'start': start_time,
                             'end': end_time,
-                            'score': score
+                            'score': score,
+                            'query_start': start_time + query_start,
+                            'query_stop': start_time + query_stop,
+                            'match_start': match_start,
+                            'match_stop': match_stop
                         })
 
             # Filter and return results
             results = []
             for path, data in all_matches.items():
                 if data['count'] >= min_segments:
+                    # Calculate match timing ranges (position in matched database file)
+                    match_sorted = sorted(data['segments'], key=lambda x: x.get('match_start', 0))
+                    match_ranges = []
+                    for seg in match_sorted:
+                        m_start = seg.get('match_start', 0)
+                        m_stop = seg.get('match_stop', 0)
+                        if m_start > 0 or m_stop > 0:
+                            if match_ranges and m_start <= match_ranges[-1][1]:
+                                match_ranges[-1] = (match_ranges[-1][0], max(match_ranges[-1][1], m_stop))
+                            else:
+                                match_ranges.append((m_start, m_stop))
+
                     results.append({
                         'path': path,
                         'segment_count': data['count'],
                         'total_segments': len(segments),
-                        'total_score': data['total_score']
+                        'total_score': data['total_score'],
+                        'match_ranges': match_ranges
                     })
 
             return results
