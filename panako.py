@@ -470,12 +470,13 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             result = self._run_command('query', str(query_file), capture_output=True, config_overrides=config if config else None)
             return result.stdout if result else None
 
-    def delete(self, path):
+    def delete(self, path, force=False):
         """
         Delete audio file(s) from database
 
         Args:
             path: Path to audio file or directory to remove
+            force: If True, attempt deletion even if file doesn't exist on disk
         """
         # Expand ~ in paths
         path = Path(os.path.expanduser(str(path))).resolve()
@@ -500,8 +501,18 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             for audio_file in sorted(audio_files):
                 self._run_command('delete', str(audio_file))
                 self._remove_from_manifest(audio_file.resolve())
+        elif force:
+            # Force delete: try to delete by path string even if file doesn't exist
+            print(f"Force deleting (file not on disk): {path.name}")
+            self._run_command('delete', str(path))
+            self._remove_from_manifest(path)
+            # Also try with just the filename (Panako may store paths differently)
+            if '/' in str(path):
+                print(f"Also trying filename only: {path.name}")
+                self._run_command('delete', path.name)
         else:
             print(f"Error: {path} not found", file=sys.stderr)
+            print(f"Tip: Use --force to attempt deletion by path even if file doesn't exist", file=sys.stderr)
 
     def clear(self, confirm=True):
         """
@@ -1671,7 +1682,8 @@ def print_help():
     print("  batch <directory>           Query all files in a directory")
     print("  stats                       Show database statistics")
     print("  list                        List all fingerprints in database")
-    print("  delete <path>               Remove file(s) from database")
+    print("  delete [--force] <path>     Remove file(s) from database")
+    print("                              Use --force for deleted files still in database")
     print("  clear                       Clear entire database (with confirmation)")
     print("\nMatching Options (query, deep-query, monitor, expand):")
     print("  --threshold <n>             Match threshold (default: 30, lower = more matches)")
@@ -1841,11 +1853,23 @@ def main():
         )
 
     elif command == 'delete':
-        if len(sys.argv) < 3:
+        # Parse options
+        force = False
+        path_arg = None
+        args = sys.argv[2:]
+        i = 0
+        while i < len(args):
+            if args[i] == '--force':
+                force = True
+            elif not args[i].startswith('-'):
+                path_arg = args[i]
+            i += 1
+
+        if not path_arg:
             print("Error: Provide path to delete", file=sys.stderr)
-            print("Usage: python3 panako.py delete <file_or_directory>", file=sys.stderr)
+            print("Usage: python3 panako.py delete [--force] <file_or_directory>", file=sys.stderr)
             sys.exit(1)
-        panako.delete(sys.argv[2])
+        panako.delete(path_arg, force=force)
 
     elif command == 'clear':
         panako.clear()
