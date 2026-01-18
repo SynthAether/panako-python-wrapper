@@ -563,8 +563,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print(f"\n{'='*80}")
         print(f"Query: {query_file.name}")
-        if threshold:
-            print(f"Threshold: {threshold} (default: 30)")
+        print(f"Threshold: {threshold if threshold else 30}{' (default)' if not threshold else ''}")
         print(f"{'='*80}\n")
 
         # Build config overrides
@@ -1028,10 +1027,9 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print(f"\n{'='*80}")
         print(f"Deep Query: {query_file.name}")
-        info_line = f"Duration: {dur_min}:{dur_sec:02d} | Segment: {effective_segment:.0f}s | Overlap: {overlap}s"
-        if threshold:
-            info_line += f" | Threshold: {threshold}"
-        print(info_line)
+        threshold_str = f"{threshold}" if threshold else "30 (default)"
+        print(f"Duration: {dur_min}:{dur_sec:02d} | Segment: {effective_segment:.0f}s | Overlap: {overlap}s")
+        print(f"Threshold: {threshold_str} | Min segments: {min_segments}")
         print(f"{'='*80}\n")
 
         # Create temp directory for segments
@@ -1244,10 +1242,9 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         print(f"{'='*80}\n")
         print(f"Seed files: {len(seed_files)}")
         print(f"Known stems: {len(seed_stems)}")
-        info_line = f"Settings: segment={segment_length}s, overlap={overlap}s, min_segments={min_segments}"
-        if threshold:
-            info_line += f", threshold={threshold}"
-        print(info_line)
+        threshold_str = f"{threshold}" if threshold else "30 (default)"
+        print(f"Segment: {segment_length}s | Overlap: {overlap}s | Min segments: {min_segments}")
+        print(f"Threshold: {threshold_str}")
         print()
 
         # Collect all matches from all seed files
