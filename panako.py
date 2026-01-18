@@ -23,10 +23,10 @@ class Panako:
     # Supported audio formats (when ffmpeg is available)
     AUDIO_EXTENSIONS = ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma']
 
-    # Manifest file to track indexed files
-    MANIFEST_FILE = Path.home() / ".panako" / "indexed_files.txt"
+    # Default database directory
+    DEFAULT_DB_DIR = Path.home() / ".panako"
 
-    def __init__(self, panako_dir=None, skip_validation=False, defer_build=False):
+    def __init__(self, panako_dir=None, db_dir=None, skip_validation=False, defer_build=False):
         """
         Initialize Panako wrapper
 
@@ -34,9 +34,13 @@ class Panako:
             panako_dir: Path to Panako installation directory
                         If not provided, looks for PANAKO_DIR environment variable
                         or defaults to ~/Panako
+            db_dir: Path to database directory for fingerprints and cache
+                    If not provided, looks for PANAKO_DB_DIR environment variable
+                    or defaults to ~/.panako
             skip_validation: If True, skip dependency validation (for testing)
             defer_build: If True, don't build Java command (for verify command)
         """
+        # Setup Panako installation directory
         if panako_dir is None:
             # Check environment variable first
             panako_dir = os.environ.get('PANAKO_DIR')
@@ -59,6 +63,17 @@ class Panako:
 
         self.panako_dir = Path(panako_dir).resolve()  # Resolve to absolute path
         self.jar_path = self.panako_dir / "build/libs"
+
+        # Setup database directory
+        if db_dir is None:
+            db_dir = os.environ.get('PANAKO_DB_DIR')
+        if db_dir is None:
+            self.db_dir = self.DEFAULT_DB_DIR
+        else:
+            self.db_dir = Path(os.path.expanduser(db_dir)).resolve()
+
+        # Manifest file location (inside db_dir)
+        self.MANIFEST_FILE = self.db_dir / "indexed_files.txt"
 
         # Detect platform
         self.platform = sys.platform  # 'darwin', 'linux', 'win32'
@@ -198,11 +213,10 @@ class Panako:
                 warnings.append("  Install: sudo apt install ffmpeg")
 
         # Check database directory permissions
-        db_path = Path.home() / ".panako"
-        if db_path.exists():
-            if not os.access(db_path, os.W_OK):
-                errors.append(f"No write permission for {db_path}")
-                errors.append(f"  Run: chmod u+w {db_path}")
+        if self.db_dir.exists():
+            if not os.access(self.db_dir, os.W_OK):
+                errors.append(f"No write permission for {self.db_dir}")
+                errors.append(f"  Run: chmod u+w {self.db_dir}")
 
         # Print errors and warnings
         if errors:
@@ -264,8 +278,14 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             '--add-opens', 'java.base/java.nio=ALL-UNNAMED',
             '--add-opens', 'java.base/sun.nio.ch=ALL-UNNAMED',
             f'-Djava.library.path={java_library_path}',
-            '-jar', str(jar_file)
         ]
+
+        # Add custom database directory if not using default
+        if self.db_dir != self.DEFAULT_DB_DIR:
+            # Panako uses OLAF_FOLDER for the database storage path
+            java_opts.append(f'-DOLAF_FOLDER={self.db_dir}')
+
+        java_opts.extend(['-jar', str(jar_file)])
 
         return java_opts
 
@@ -404,10 +424,12 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         """
         List files currently in Panako cache (simple, read-only)
         """
-        cache_path = Path.home() / ".panako/dbs/olaf_cache"
+        cache_path = self.db_dir / "dbs" / "olaf_cache"
 
         print(f"\n{'='*80}")
         print("Panako Database Cache Files")
+        if self.db_dir != self.DEFAULT_DB_DIR:
+            print(f"Database: {self.db_dir}")
         print(f"{'='*80}\n")
 
         if not cache_path.exists():
@@ -522,22 +544,23 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             confirm: If True, ask for confirmation
         """
         if confirm:
-            response = input("Clear entire database? This cannot be undone! (yes/no): ")
+            db_location = f" at {self.db_dir}" if self.db_dir != self.DEFAULT_DB_DIR else ""
+            response = input(f"Clear entire database{db_location}? This cannot be undone! (yes/no): ")
             if response.lower() != 'yes':
                 print("Cancelled.")
                 return
 
-        print("Clearing database...")
+        print(f"Clearing database at {self.db_dir}...")
         self._run_command('clear')
 
         # Clear the fingerprint cache
-        cache_path = Path.home() / ".panako" / "dbs" / "olaf_cache"
+        cache_path = self.db_dir / "dbs" / "olaf_cache"
         if cache_path.exists():
             shutil.rmtree(cache_path)
             print("Cache cleared.")
 
         # Clear the LMDB database (stores paths and fingerprint index)
-        db_path = Path.home() / ".panako" / "dbs" / "olaf_db"
+        db_path = self.db_dir / "dbs" / "olaf_db"
         if db_path.exists():
             shutil.rmtree(db_path)
             print("Database index cleared.")
@@ -548,6 +571,38 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             print("Manifest cleared.")
 
         print("Database fully cleared.")
+
+    def clear_cache(self, confirm=True):
+        """
+        Clear only the fingerprint cache (keeps the indexed database intact).
+
+        This is useful when switching between different Panako configurations
+        to ensure fingerprints are re-extracted with the new settings.
+
+        Args:
+            confirm: If True, ask for confirmation
+        """
+        cache_path = self.db_dir / "dbs" / "olaf_cache"
+
+        if not cache_path.exists():
+            print("Cache is already empty.")
+            return
+
+        cache_files = list(cache_path.glob("*.tdb"))
+        if not cache_files:
+            print("Cache is already empty.")
+            return
+
+        if confirm:
+            db_location = f" at {self.db_dir}" if self.db_dir != self.DEFAULT_DB_DIR else ""
+            response = input(f"Clear fingerprint cache{db_location}? ({len(cache_files)} cached files) (yes/no): ")
+            if response.lower() != 'yes':
+                print("Cancelled.")
+                return
+
+        shutil.rmtree(cache_path)
+        print(f"Cache cleared ({len(cache_files)} files removed).")
+        print("Note: Indexed database remains intact. Next query will re-extract fingerprints.")
 
     def stats(self):
         """Show database statistics"""
@@ -1412,19 +1467,21 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         # Check database
         print(f"Database:")
-        db_path = Path.home() / ".panako/dbs"
-        db_exists = db_path.exists()
+        dbs_path = self.db_dir / "dbs"
+        if self.db_dir != self.DEFAULT_DB_DIR:
+            print(f"  Custom location: {self.db_dir}")
+        db_exists = dbs_path.exists()
         if db_exists:
-            cache_files = list((db_path / "olaf_cache").glob("*.tdb")) if (db_path / "olaf_cache").exists() else []
+            cache_files = list((dbs_path / "olaf_cache").glob("*.tdb")) if (dbs_path / "olaf_cache").exists() else []
             print(f"  Status: ✓ Initialized ({len(cache_files)} files indexed)")
-            print(f"  Location: {db_path}")
+            print(f"  Location: {dbs_path}")
 
             # Check permissions
-            if os.access(db_path, os.W_OK):
+            if os.access(dbs_path, os.W_OK):
                 print(f"  Permissions: ✓ Writable")
             else:
                 print(f"  Permissions: ✗ Not writable")
-                print(f"  Run: chmod u+w {db_path}")
+                print(f"  Run: chmod u+w {dbs_path}")
                 all_checks.append(False)
         else:
             print("  Status: ℹ Not initialized (will be created on first use)")
@@ -1667,7 +1724,10 @@ def print_help():
     """Print detailed help message"""
     print("Panako Python Wrapper - Audio Fingerprinting")
     print("\nUsage:")
-    print("  python3 panako.py <command> [arguments]")
+    print("  python3 panako.py [--db-dir <path>] <command> [arguments]")
+    print("\nGlobal Options:")
+    print("  --db-dir <path>             Use custom database directory (default: ~/.panako)")
+    print("                              Can also be set via PANAKO_DB_DIR environment variable")
     print("\nCommands:")
     print("  setup [--force]             Download and build Panako (first-time setup)")
     print("  verify                      Check if Panako is properly installed")
@@ -1685,6 +1745,7 @@ def print_help():
     print("  delete [--force] <path>     Remove file(s) from database")
     print("                              Use --force for deleted files still in database")
     print("  clear                       Clear entire database (with confirmation)")
+    print("  clear-cache                 Clear fingerprint cache only (keeps database)")
     print("\nMatching Options (query, deep-query, monitor, expand):")
     print("  --threshold <n>             Match threshold (default: 30, lower = more matches)")
     print("\nDeep Query Options (deep-query, expand):")
@@ -1709,6 +1770,16 @@ def print_help():
     print("  python3 panako.py expand --threshold 15 --report results.txt ./found/track01")
     print("  python3 panako.py batch ~/test_files")
     print("  python3 panako.py stats")
+    print("  python3 panako.py clear-cache             # Clear cache when switching configs")
+    print("\nMultiple Database Example (for A/B testing configurations):")
+    print("  # Use different databases for different Panako configurations")
+    print("  export PANAKO_DIR=~/Panako_v1")
+    print("  export PANAKO_DB_DIR=~/.panako_v1")
+    print("  python3 panako.py store ~/Music")
+    print("")
+    print("  export PANAKO_DIR=~/Panako_v2")
+    print("  export PANAKO_DB_DIR=~/.panako_v2")
+    print("  python3 panako.py store ~/Music")
     print("\nSupported formats: WAV, MP3, FLAC, OGG, M4A, AAC, WMA")
     print("(MP3/FLAC/etc require ffmpeg to be installed)")
     print("\nFor more help: https://github.com/SynthAether/panako-python-wrapper")
@@ -1722,6 +1793,22 @@ def main():
         print_help()
         sys.exit(0)
 
+    # Parse global options (--db-dir) before command
+    db_dir = None
+    args = sys.argv[1:]
+    filtered_args = []
+    i = 0
+    while i < len(args):
+        if args[i] == '--db-dir' and i + 1 < len(args):
+            db_dir = args[i + 1]
+            i += 2
+        else:
+            filtered_args.append(args[i])
+            i += 1
+
+    # Update sys.argv for backward compatibility with command parsing
+    sys.argv = [sys.argv[0]] + filtered_args
+
     # Special case: setup command doesn't need full initialization
     if len(sys.argv) >= 2 and sys.argv[1].lower() == 'setup':
         force = '--force' in sys.argv
@@ -1731,7 +1818,7 @@ def main():
     # Special case: verify command doesn't need full initialization
     if len(sys.argv) >= 2 and sys.argv[1].lower() == 'verify':
         try:
-            panako = Panako(skip_validation=True)
+            panako = Panako(db_dir=db_dir, skip_validation=True)
             panako.verify_setup()
         except Exception as e:
             print(f"Error during verification: {e}", file=sys.stderr)
@@ -1741,7 +1828,7 @@ def main():
 
     # Initialize Panako
     try:
-        panako = Panako()
+        panako = Panako(db_dir=db_dir)
     except Exception as e:
         print(f"Error initializing Panako: {e}", file=sys.stderr)
         print("\nTry running: python3 panako.py verify", file=sys.stderr)
@@ -1873,6 +1960,9 @@ def main():
 
     elif command == 'clear':
         panako.clear()
+
+    elif command == 'clear-cache':
+        panako.clear_cache()
 
     elif command == 'stats':
         panako.stats()

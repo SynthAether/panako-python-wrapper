@@ -447,6 +447,9 @@ python3 panako.py delete /path/to/audio.wav
 
 # Clear entire database (with confirmation)
 python3 panako.py clear
+
+# Clear only the fingerprint cache (keeps database intact)
+python3 panako.py clear-cache
 ```
 
 #### Initialize Manifest (for existing databases)
@@ -1233,6 +1236,149 @@ OLAF_HIT_THRESHOLD = 20
 ```
 
 After changing settings, restart your queries for changes to take effect.
+
+## Multiple Databases and Configuration Testing
+
+When experimenting with different Panako configurations (e.g., different `Key.java` settings), you may want to maintain separate databases for comparison. The wrapper supports this via `PANAKO_DB_DIR` environment variable or `--db-dir` command line option.
+
+### Understanding the Database Structure
+
+Panako stores data in two locations:
+
+| Location | Purpose | Safe to delete? |
+|----------|---------|-----------------|
+| `~/.panako/dbs/olaf_db/` | **Main fingerprint index** - LMDB database of all indexed files | **NO** - this is your indexed library |
+| `~/.panako/dbs/olaf_cache/` | **Fingerprint cache** - cached fingerprints for previously processed files | **YES** - just a performance optimization |
+
+The **cache** stores extracted fingerprints to avoid re-processing the same audio file. When you switch between Panako configurations with different fingerprinting parameters, you should clear the cache so fingerprints are re-extracted with the new settings.
+
+### Switching Between Panako Configurations
+
+If you have multiple Panako builds with different `Key.java` settings and want to compare them:
+
+**Option 1: Same database, clear cache when switching (for runtime-only changes)**
+
+Some configuration changes only affect how matches are filtered/scored, not how fingerprints are extracted. For these changes, you can use the same database:
+
+```bash
+# Test with Panako version 1
+export PANAKO_DIR=~/Panako_v1
+python3 panako.py query ~/test.wav
+
+# Switch to Panako version 2, clear cache first
+export PANAKO_DIR=~/Panako_v2
+python3 panako.py clear-cache
+python3 panako.py query ~/test.wav
+```
+
+**Option 2: Separate databases (for fingerprint extraction changes)**
+
+If your configuration changes affect fingerprint extraction (e.g., `PANAKO_FREQ_MAX_FILTER_SIZE`, `PANAKO_TIME_MAX_FILTER_SIZE`, `PANAKO_TRANSF_MIN_FREQ`), you need separate databases because the indexed fingerprints will be different:
+
+```bash
+# Build database with Panako version 1
+export PANAKO_DIR=~/Panako_v1
+export PANAKO_DB_DIR=~/.panako_v1
+python3 panako.py store ~/Music
+
+# Build database with Panako version 2
+export PANAKO_DIR=~/Panako_v2
+export PANAKO_DB_DIR=~/.panako_v2
+python3 panako.py store ~/Music
+
+# Now you can query against each database
+export PANAKO_DIR=~/Panako_v1
+export PANAKO_DB_DIR=~/.panako_v1
+python3 panako.py query ~/test.wav
+
+export PANAKO_DIR=~/Panako_v2
+export PANAKO_DB_DIR=~/.panako_v2
+python3 panako.py query ~/test.wav
+```
+
+**Option 3: Use --db-dir command line option**
+
+```bash
+# Query against a specific database without environment variables
+python3 panako.py --db-dir ~/.panako_v1 query ~/test.wav
+python3 panako.py --db-dir ~/.panako_v2 query ~/test.wav
+```
+
+### Creating a Custom Panako Build
+
+To test different Panako configurations:
+
+1. **Clone Panako to a new directory:**
+   ```bash
+   git clone https://github.com/JorenSix/Panako.git ~/Panako_custom
+   cd ~/Panako_custom
+   ```
+
+2. **Edit configuration in `src/main/java/be/panako/util/Key.java`:**
+
+   Common parameters to experiment with:
+
+   | Parameter | Default | Description |
+   |-----------|---------|-------------|
+   | `PANAKO_FREQ_MAX_FILTER_SIZE` | 103 | Event point extraction: vertical (frequency) max filter size |
+   | `PANAKO_TIME_MAX_FILTER_SIZE` | 25 | Event point extraction: horizontal (time) max filter size |
+   | `PANAKO_TRANSF_MIN_FREQ` | 110 | Minimum frequency (Hz) to analyze |
+   | `PANAKO_MIN_TIME_FACTOR` | 0.8 | Time tolerance for matching (80% to 120%) |
+   | `PANAKO_MAX_TIME_FACTOR` | 1.2 | Time tolerance for matching |
+   | `PANAKO_MIN_FREQ_FACTOR` | 0.8 | Frequency tolerance for matching (pitch) |
+   | `PANAKO_MAX_FREQ_FACTOR` | 1.2 | Frequency tolerance for matching |
+   | `PANAKO_HIT_PART_MAX_SIZE` | 250 | Max hits to consider during filtering |
+   | `PANAKO_HIT_PART_DIVIDER` | 5 | Hit list division for filtering |
+
+3. **Build the custom version:**
+   ```bash
+   ./gradlew clean shadowJar
+   ```
+
+4. **Verify your changes are compiled:**
+   ```bash
+   java -jar build/libs/panako-*-all.jar config | grep -E "PANAKO_(FREQ|TIME|HIT)"
+   ```
+
+### Comparing Configuration Results
+
+**Fingerprint Extraction Parameters** (require separate databases):
+- `PANAKO_FREQ_MAX_FILTER_SIZE`
+- `PANAKO_TIME_MAX_FILTER_SIZE`
+- `PANAKO_TRANSF_MIN_FREQ`
+- `PANAKO_TRANSF_MAX_FREQ`
+
+These parameters affect how fingerprints are generated. Different settings produce different fingerprints, so you need separate databases for fair comparison.
+
+**Runtime Matching Parameters** (can share database):
+- `PANAKO_MIN_TIME_FACTOR` / `PANAKO_MAX_TIME_FACTOR`
+- `PANAKO_MIN_FREQ_FACTOR` / `PANAKO_MAX_FREQ_FACTOR`
+- `PANAKO_HIT_PART_MAX_SIZE`
+- `PANAKO_HIT_PART_DIVIDER`
+
+These parameters only affect how matches are filtered and scored. They work with any database, but you should clear the cache when switching to ensure fingerprints are re-extracted consistently.
+
+### Python API
+
+```python
+from panako import Panako
+
+# Use custom database directory
+panako = Panako(db_dir="~/.panako_custom")
+
+# Or use both custom Panako installation and database
+panako = Panako(
+    panako_dir="~/Panako_custom",
+    db_dir="~/.panako_custom"
+)
+
+# Store and query using this configuration
+panako.store("~/Music")
+panako.query("~/test.wav")
+
+# Clear just the cache (keeps database)
+panako.clear_cache()
+```
 
 ## Project Structure
 
