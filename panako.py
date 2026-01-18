@@ -282,8 +282,12 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         # Add custom database directory if not using default
         if self.db_dir != self.DEFAULT_DB_DIR:
-            # Panako uses OLAF_FOLDER for the database storage path
-            java_opts.append(f'-DOLAF_FOLDER={self.db_dir}')
+            # Panako uses separate keys for LMDB folder and cache folder
+            # We need to set both to redirect all storage to the custom directory
+            olaf_db_path = self.db_dir / "dbs" / "olaf_db"
+            olaf_cache_path = self.db_dir / "dbs" / "olaf_cache"
+            java_opts.append(f'-DOLAF_LMDB_FOLDER={olaf_db_path}')
+            java_opts.append(f'-DOLAF_CACHE_FOLDER={olaf_cache_path}')
 
         java_opts.extend(['-jar', str(jar_file)])
 
