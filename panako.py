@@ -459,6 +459,89 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
 
         print(f"\n{'='*80}\n")
 
+    def _format_query_results(self, output, query_file_path=None):
+        """
+        Format Panako query output for better readability.
+
+        Parses the semicolon-separated output and displays match paths
+        on separate lines with clear formatting.
+
+        Args:
+            output: Raw output from Panako query command
+            query_file_path: Path to query file (to filter self-matches)
+
+        Returns:
+            List of match dictionaries
+        """
+        matches = []
+        info_lines = []
+
+        for line in output.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Check if this is a result line (starts with a number and contains semicolons)
+            if ';' in line and line[0].isdigit():
+                parts = [p.strip() for p in line.split(';')]
+                if len(parts) >= 11:
+                    try:
+                        query_path = parts[2]
+                        query_start = float(parts[3])
+                        query_stop = float(parts[4])
+                        match_path = parts[5]
+                        match_id = parts[6]
+                        match_start = float(parts[7])
+                        match_stop = float(parts[8])
+                        score = int(parts[9])
+                        time_factor = parts[10].replace('%', '').strip()
+                        freq_factor = parts[11].replace('%', '').strip() if len(parts) > 11 else "1.000"
+
+                        # Skip self-matches
+                        if query_file_path and Path(match_path).resolve() == Path(query_file_path).resolve():
+                            continue
+
+                        matches.append({
+                            'path': match_path,
+                            'score': score,
+                            'query_start': query_start,
+                            'query_stop': query_stop,
+                            'match_start': match_start,
+                            'match_stop': match_stop,
+                            'time_factor': time_factor,
+                            'freq_factor': freq_factor,
+                            'match_id': match_id
+                        })
+                    except (ValueError, IndexError):
+                        # Not a valid result line, treat as info
+                        info_lines.append(line)
+            else:
+                # Info/log line - print as-is
+                info_lines.append(line)
+
+        # Print info lines (logs, headers, etc.)
+        for line in info_lines:
+            print(line)
+
+        # Print formatted matches
+        if matches:
+            print(f"\n{'─'*80}")
+            print(f"MATCHES FOUND: {len(matches)}")
+            print(f"{'─'*80}")
+
+            for i, match in enumerate(matches, 1):
+                print(f"\n{i}. Score: {match['score']} fingerprints")
+                print(f"   Query segment: {match['query_start']:.2f}s - {match['query_stop']:.2f}s")
+                print(f"   Match segment: {match['match_start']:.2f}s - {match['match_stop']:.2f}s")
+                print(f"   Time factor: {match['time_factor']} | Freq factor: {match['freq_factor']}")
+                print(f"   >> \"{match['path']}\"")
+
+            print(f"\n{'─'*80}\n")
+        else:
+            print("\nNo matches found.\n")
+
+        return matches
+
     def query(self, query_file, show_output=True, threshold=None):
         """
         Query database with audio file
@@ -489,12 +572,24 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
         if threshold is not None:
             config['OLAF_HIT_THRESHOLD'] = threshold
 
-        if show_output:
-            self._run_command('query', str(query_file), config_overrides=config if config else None)
-            return None
+        # Always capture output so we can format it nicely
+        result = self._run_command('query', str(query_file), capture_output=True, config_overrides=config if config else None)
+
+        if result and result.stdout:
+            # Combine stdout and stderr for complete output
+            full_output = result.stdout
+            if result.stderr:
+                full_output = result.stderr + "\n" + full_output
+
+            if show_output:
+                matches = self._format_query_results(full_output, query_file)
+                return matches
+            else:
+                return full_output
         else:
-            result = self._run_command('query', str(query_file), capture_output=True, config_overrides=config if config else None)
-            return result.stdout if result else None
+            if show_output:
+                print("No results returned from query.")
+            return None
 
     def delete(self, path, force=False):
         """
@@ -1067,7 +1162,6 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                 for rank, r in enumerate(results, 1):
                     path = Path(r['path'])
                     print(f"{rank}. {path.name}")
-                    print(f"   Path: {r['path']}")
                     print(f"   Segments: {r['segment_count']}/{r['total_segments']} ({r['percentage']:.1f}%)")
                     print(f"   Total score: {r['total_score']} fingerprints")
 
@@ -1077,7 +1171,7 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                         start_fmt = f"{int(start//60)}:{int(start%60):02d}"
                         end_fmt = f"{int(end//60)}:{int(end%60):02d}"
                         query_strs.append(f"{start_fmt}-{end_fmt}")
-                    print(f"   Query file match: {', '.join(query_strs)}")
+                    print(f"   Query match at: {', '.join(query_strs)}")
 
                     # Format match file time ranges (position in database file)
                     match_ranges = r.get('match_ranges', [])
@@ -1087,7 +1181,10 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
                             start_fmt = f"{int(start//60)}:{int(start%60):02d}"
                             end_fmt = f"{int(end//60)}:{int(end%60):02d}"
                             match_strs.append(f"{start_fmt}-{end_fmt}")
-                        print(f"   In matched file: {', '.join(match_strs)}")
+                        print(f"   In matched file at: {', '.join(match_strs)}")
+
+                    # Display path on its own line with quotes for easy copying
+                    print(f"   >> \"{r['path']}\"")
                     print()
 
             print(f"{'='*80}\n")
@@ -1235,9 +1332,9 @@ Note: First build downloads dependencies (~50-100MB) and takes 2-5 minutes.
             for rank, match in enumerate(sorted_matches, 1):
                 confidence = f"matched by {match['seed_count']}/{len(seed_files)} seeds"
                 print(f"{rank}. {match['stem']}")
-                print(f"   Path: {match['path']}")
                 print(f"   Confidence: {confidence}")
                 print(f"   Total score: {match['total_score']} fingerprints")
+                print(f"   >> \"{match['path']}\"")
                 print()
 
         print(f"{'='*80}\n")
