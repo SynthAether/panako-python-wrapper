@@ -1,0 +1,159 @@
+import java.nio.file.Paths
+import java.text.SimpleDateFormat
+
+plugins {
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+    id 'java'
+    id 'maven-publish'
+}
+
+group 'be.panako'
+version '2.1'
+
+sourceCompatibility = 1.11
+targetCompatibility = 1.11
+
+repositories {
+    mavenCentral()
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+    maven {
+        name = "TarsosDSP repository"
+        url = "https://mvn.0110.be/releases"
+    }
+}
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+
+dependencies {
+    implementation 'org.reflections:reflections:0.10.2'
+    implementation 'org.slf4j:slf4j-simple:1.7.36'
+
+//    implementation 'org.ow2.asm:asm:9.2'
+//    implementation 'org.ow2.asm:asm-commons:9.2'
+//    implementation 'org.ow2.asm:asm-analysis:9.2'
+//    implementation 'org.ow2.asm:asm-tree:9.2'
+//    implementation 'org.ow2.asm:asm-util:9.2'
+//    implementation 'com.github.jnr:jnr-ffi:2.2.13'
+
+    implementation "org.mlmdbjava:lmdbjava:0.9.1"
+    implementation 'be.tarsos.dsp:core:2.5'
+    implementation 'be.tarsos.dsp:jvm:2.5'
+    implementation 'be.ugent.jgaborator:jgaborator:0.7'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.8.1'
+}
+
+jar {
+    manifest {
+        attributes(
+                "Main-Class": "be.panako.cli.Panako",
+                "Build-Version": project.version,
+                "Build-By" : System.properties['user.name'],
+                "Build-Date":  new SimpleDateFormat("yyyy-MM-dd").format(new Date()),
+                'Build-JDK' : "${System.properties['java.version']} (${System.properties['java.vendor']} ${System.properties['java.vm.version']})",
+                'Build-OS'  : "${System.properties['os.name']} ${System.properties['os.arch']} ${System.properties['os.version']}"
+        )
+    }
+}
+
+publishing {
+    publications {
+    mavenJava(MavenPublication) {
+        from components.java
+
+        pom {
+            name = 'Panako'
+            description = 'An audio fingerprinting system in Java'
+            url = 'https://github.com/JorenSix/Panako'
+            licenses {
+                license {
+                    name = 'AGPL'
+                    url = 'https://www.gnu.org/licenses/agpl-3.0.txt'
+                }
+            }
+            developers {
+                developer {
+                    id = 'JorenSix'
+                    name = 'Joren Six'
+                    email = 'joren.six@ugent.be'
+                }
+            }
+            scm {
+                connection = 'https://github.com/JorenSix/Panako.git'
+                developerConnection = 'git@github.com:JorenSix/Panako.git'
+                url = 'https://github.com/JorenSix/Panako/'
+            }
+        }
+    }
+    }
+
+    repositories {
+
+        maven {
+            name = "GitHubPackages"
+            url = "https://maven.pkg.github.com/JorenSix/Panako"
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
+
+
+        //public, self hosted repository
+        maven {
+            name = "reposilite"
+            url = "https://mvn.0110.be/releases"
+            credentials {
+                username = System.getenv("REPOSILITE_ACTOR")
+                password = System.getenv("REPOSILITE_TOKEN")
+            }
+        }
+    }
+}
+
+
+test {
+    useJUnitPlatform()
+    //needed for lmdb to work correctly
+    doFirst {
+        jvmArgs = [
+                '--add-opens=java.base/java.nio=ALL-UNNAMED'
+        ]
+    }
+}
+
+//Install Panako to home dir
+tasks.register('install') {
+        java.nio.file.Path installDir = Paths.get(System.getProperty('user.home')).resolve('.panako')
+        File logDir = file(installDir.resolve("log"))
+        mkdir logDir
+        println("Installing " + rootProject.name + " to " + installDir)
+
+        File logFile = file(installDir.resolve("logging.properties"))
+        if( !logFile.exists() ) {
+            copy {
+                from layout.projectDirectory.dir("resources").file("logging.properties")
+                into logFile
+            }
+        }
+
+        File configFile = file(installDir.resolve("config.properties"))
+        if( !configFile.exists() ) {
+            copy {
+                from layout.projectDirectory.dir("resources").file("config.properties")
+                into installDir
+            }
+        }
+
+        def shadowJarFileName =  rootProject.name + "-"+ project.version + "-all.jar" as String
+        copy {
+           from layout.buildDirectory.dir("libs").get().file(shadowJarFileName)
+           into installDir
+           rename shadowJarFileName, "panako.jar"
+        }
+}
+
